@@ -63,6 +63,7 @@ function topbar(title, ctx = '', ws = 'teacher') {
     <button class="btn btn-ghost btn-icon menu-btn" data-action="nav-open" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="${U.navOpen}">${icon('menu')}</button>
     <h1 id="page-title" tabindex="-1">${title}</h1>
     ${ctx}
+    ${ws !== 'research' ? html`<form class="top-search" role="search" data-submit="global-search"><label class="sr-only" for="top-q">Search</label>${icon('search')}<input class="input" id="top-q" type="search" placeholder="${ws === 'teacher' ? 'Search labs and procedures' : 'Search your labs'}" data-bind="ui.topQ" data-type="str" value="${S.ui.topQ || ''}"></form>` : ''}
     <div class="profile">
       <button class="profile-btn" data-action="menu-toggle" aria-haspopup="menu" aria-expanded="${U.menu}" aria-label="Account menu for ${user.name}">
         ${avatarEl(user)}<span class="hide-sm small strong">${displayName(user).split(' ')[0]}</span>${icon('chevDown', 'sm')}</button>

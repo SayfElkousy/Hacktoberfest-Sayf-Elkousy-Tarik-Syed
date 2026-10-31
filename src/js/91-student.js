@@ -210,7 +210,7 @@ function sessionLine(v) {
 function labCard(x) {
   const v = x.view; const prep = v.sections.prep;
   return html`<article class="card class-card" data-key="slc-${v.assignmentId}">
-    <div class="row between top wrap"><div class="stack tight" style="min-width:0"><h3>${v.title}</h3><span class="small muted">${v.className} · ${v.periodName}</span></div>${studentPill(v.status)}</div>
+    <div class="row between top wrap"><div class="stack tight" style="min-width:0"><h3>${v.title}</h3><span class="small muted">${v.className} · ${v.periodName}${v.teacherName ? ` · ${v.teacherName}` : ''}</span></div>${studentPill(v.status)}</div>
     ${v.description ? html`<p class="small">${v.description}</p>` : ''}
     <div class="row wrap small" style="gap:6px 14px"><span>${icon('calendar', 'sm')} ${fmtSchedule({ scheduledFor: v.scheduledFor, scheduledTime: v.scheduledTime })}</span><span>${icon('clock', 'sm')} About ${v.durationMin} min</span></div>
     ${prep && prep.length ? html`<div class="next-lab"><span class="eyebrow">Prepare</span><span class="small">${prep[0]}${prep.length > 1 ? ` (+${prep.length - 1} more)` : ''}</span></div>` : ''}
@@ -228,7 +228,7 @@ function studentClassSelect() {
 function studentOverview() {
   const u = me(); const enr = studentEnrollments(u.id);
   const intro = html`<div class="page-intro"><div class="stack tight"><p class="eyebrow">${fmtDateLong(Date.now())}</p><h2 style="font-size:1.45rem">${greeting()}, ${displayName(u)}.</h2></div>
-    <a class="btn" href="#s/join">${icon('key')}Join a class</a></div>`;
+    <div class="row wrap"><a class="btn btn-primary" href="#s/live">${icon('activity')}Join Live Session</a><a class="btn" href="#s/join">${icon('key')}Join a class</a></div></div>`;
   if (!enr.length) return html`${intro}<div class="card">${emptyState({ ico: 'key', title: 'Join your first class', text: 'Ask your teacher for the class code or join link. Once you join, your labs show up here.', actions: html`<a class="btn btn-primary" href="#s/join">${icon('key')}Join a class</a>` })}</div>`;
   const labs = studentLabsFor(u.id, S.ui.sClass);
   const live = labs.filter((x) => x.view.status === 'ready' || x.view.status === 'inprogress');
@@ -236,7 +236,7 @@ function studentOverview() {
   const prepping = upcoming.filter((x) => (x.view.sections.prep || []).length);
   return html`${intro}<div class="stack loose">
     ${live.map((x) => { const v = x.view; return html`<section class="card live-hero" aria-labelledby="lh-${v.assignmentId}" data-key="lh-${v.assignmentId}">
-      <div class="card-body row between wrap"><div class="stack tight"><div class="row wrap">${studentPill(v.status)}${v.sessionStatus === 'paused' ? html`<span class="pill tone-warn">${icon('pause')}Paused by teacher</span>` : ''}</div>
+      <div class="card-body row between wrap"><div class="stack tight"><span class="eyebrow">Continue your lab</span><div class="row wrap">${studentPill(v.status)}${v.sessionStatus === 'paused' ? html`<span class="pill tone-warn">${icon('pause')}Paused by teacher</span>` : ''}</div>
         <h2 id="lh-${v.assignmentId}" style="font-size:1.35rem">${v.title}</h2><span class="small muted">${v.className} · ${v.periodName}${v.group ? ` · ${v.group.name}` : ''}</span></div>
         <a class="btn btn-primary btn-lg" href="#s/live/${v.sessionId}">${icon('activity')}${v.status === 'inprogress' ? 'Resume Live Session' : 'Enter Live Session'}</a></div></section>`; })}
     <div class="grid grid-main-side">
@@ -248,7 +248,8 @@ function studentOverview() {
         <div class="card-body">${prepping.length ? prepping.slice(0, 2).map((x) => html`<div class="stack tight" style="margin-bottom:12px"><a class="lib-title small" href="#s/lab/${x.a.id}">${x.view.title}</a>${prepList(x.view, true)}</div>`)
           : html`<p class="small muted">No preparation tasks right now.</p>`}</div></section>
     </div>
-    <section class="stack" aria-labelledby="so-classes"><div class="row between"><h2 id="so-classes">My classes</h2><a class="btn btn-sm" href="#s/classes">All classes</a></div>
+    ${recentWork(labs)}
+    <section class="stack" aria-labelledby="so-classes"><div class="row between"><h2 id="so-classes">Your classes</h2><a class="btn btn-sm" href="#s/classes">All classes</a></div>
       <div class="grid grid-3">${enr.map(studentClassCard)}</div></section>
   </div>`;
 }
@@ -284,8 +285,9 @@ function studentLabsView() {
   const all = studentLabsFor(S.currentUserId, S.ui.sClass);
   const f = S.ui.sLabFilter || 'all';
   const counts = {}; all.forEach((x) => { counts[x.view.status] = (counts[x.view.status] || 0) + 1; });
-  const list = all.filter((x) => f === 'all' || x.view.status === f);
-  return html`<div class="page-intro"><p>Labs your teachers have published. You only see what each teacher has released so far.</p></div>
+  const q = (S.ui.sLabQuery || '').trim().toLowerCase();
+  const list = all.filter((x) => (f === 'all' || x.view.status === f) && (!q || `${x.view.title} ${x.view.className} ${x.view.description}`.toLowerCase().includes(q)));
+  return html`<div class="page-intro"><p>Labs your teachers have published. You only see what each teacher has released so far.</p>${q ? html`<span class="row small">Results for “${S.ui.sLabQuery}” <button class="link-btn" data-action="s-search-clear">Clear search</button></span>` : ''}</div>
     <div class="chips" role="group" aria-label="Filter labs by status" style="margin-bottom:14px">
       <button class="chip" aria-pressed="${f === 'all'}" data-action="s-lab-filter" data-f="all">All<span class="count">${all.length}</span></button>
       ${Object.keys(STUDENT_LAB_STATUS).map((k) => html`<button class="chip" aria-pressed="${f === k}" data-action="s-lab-filter" data-f="${k}">${icon(STUDENT_LAB_STATUS[k].icon, 'sm')}${STUDENT_LAB_STATUS[k].label}<span class="count">${counts[k] || 0}</span></button>`)}</div>

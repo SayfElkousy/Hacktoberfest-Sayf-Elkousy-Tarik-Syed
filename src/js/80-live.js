@@ -34,7 +34,7 @@ function liveView() {
     <section class="card card-pad stack" aria-labelledby="ls-title">
       <div class="session-head">
         <div class="stack tight" style="min-width:0"><div class="row wrap">${sessionPill(sess.status)}<span class="tag">${icon('lock', 'sm')}Version ${v.number}</span></div>
-          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span></div>
+          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>${sess.status !== 'completed' ? joinCodeChip(cls) : ''}</div>
         ${sess.status === 'scheduled' ? html`<div class="stack tight" style="align-items:flex-end"><span class="small muted">Scheduled ${sess.scheduledFor === todayISO() ? 'for today' : 'for ' + fmtDate(new Date(sess.scheduledFor + 'T12:00').getTime())} · ${plannedMinutes(c)} min planned</span>
           ${groupsAvailable ? html`<button class="btn btn-primary" data-action="session-start" data-sid="${sess.id}">${icon('play')}Start session</button>`
             : html`<a class="btn" href="#class-${cls.id}" data-action="class-period-go" data-cid="${cls.id}" data-pid="${sess.periodId}">${icon('layers')}Arrange lab groups first</a>`}</div>`

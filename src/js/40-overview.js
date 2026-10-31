@@ -52,7 +52,7 @@ function activeLabCard(sess) {
   const rows = [...sm.ps].sort((a, b) => groupById(a.groupId).name.localeCompare(groupById(b.groupId).name, undefined, { numeric: true }));
   return html`<section class="card" aria-labelledby="ov-active">
     <div class="card-head"><div class="stack tight"><span class="eyebrow">Active lab</span><h2 id="ov-active">${c.title}</h2>
-      <span class="small muted">${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}</span></div>${sessionPill(sess.status)}</div>
+      <span class="small muted">${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}</span></div><div class="row wrap">${joinCodeChip(classById(sess.classId))}${sessionPill(sess.status)}</div></div>
     <div class="card-body stack loose">
       <div class="clock-block">
         <div><div class="k">Elapsed</div><div class="v">${tickSession(sess, 'elapsed')}</div></div>

@@ -3,7 +3,7 @@
 <meta name="description" content="Labby: plan classroom labs with an AI assistant, assign them to class periods, follow each lab group live, and answer help requests in order.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
 /* Layout concept: persistent left rail + working canvas; dense, scannable cards for in-class use, roomier forms for prep. */
 :root {
@@ -683,38 +683,80 @@ img.avatar { object-fit: cover; padding: 0; }
 
 .guide .msg-meta { display: flex; gap: 6px 8px; align-items: center; flex-wrap: wrap; font-size: 0.76rem; color: var(--muted); }
 
-/* ---------- Workspace identities: teacher = teal on white, student = indigo with a colored sidebar ---------- */
-.ws-student {
-  --accent: #4f46e5; --accent-ink: #3730a3; --accent-soft: #e8e7fd; --accent-contrast: #ffffff;
-  --bg: #f5f5fc; --surface-2: #f8f8fe; --surface-3: #ececf8; --line: #dedff0; --line-strong: #c6c8e2; --focus: #4f46e5;
-  --side-bg: #2e2a85; --side-ink: #e9e8ff; --side-muted: #b9b6f2; --side-hover: rgba(255, 255, 255, 0.1); --side-active: #ffffff; --side-active-ink: #2e2a85;
-  background: var(--bg);
+/* =====================================================================
+   Green redesign: design tokens (single source of truth).
+   ===================================================================== */
+:root {
+  --green: #15803D; --green-hover: #166534; --forest: #143D2B; --green-pale: #ECFDF3;
+  --bg: #F7FAF8; --surface: #FFFFFF; --surface-2: #F4F8F5; --surface-3: #EAF2EC;
+  --ink: #17251D; --ink-2: #2E4136; --muted: #52645A; --heading: #143D2B;
+  --line: #DCE7DF; --line-strong: #C2D3C7;
+  --accent: #15803D; --accent-ink: #166534; --accent-soft: #ECFDF3; --accent-contrast: #FFFFFF; --focus: #15803D;
+  --ok: #15803D; --ok-soft: #ECFDF3; --warn: #92400E; --warn-soft: #FEF3C7; --bad: #B91C1C; --bad-soft: #FEE2E2;
+  --blue: #1D4ED8; --blue-soft: #EAF0FD;
+  --shadow: 0 1px 2px rgba(20, 61, 43, 0.06); --shadow-lg: 0 12px 28px rgba(20, 61, 43, 0.14);
+  --font-display: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --r-sm: 8px; --r: 12px; --r-lg: 16px;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ws-student { --accent: #8b85ff; --accent-ink: #b9b5ff; --accent-soft: #24224f; --accent-contrast: #12103a; --bg: #11111f; --surface-2: #1a1a2e; --surface-3: #222238; --line: #2c2c45; --line-strong: #3a3a58; --focus: #8b85ff; --side-bg: #1c1a4a; --side-ink: #e9e8ff; --side-muted: #a9a6e6; --side-active: #8b85ff; --side-active-ink: #12103a; }
+  :root:not([data-theme="light"]) { --bg: #0E1612; --surface: #15201A; --surface-2: #19261F; --surface-3: #1F2F26; --ink: #E5EFE8; --ink-2: #C5D6CB; --muted: #96AC9E; --heading: #CDEBD6; --line: #26382D; --line-strong: #34493C;
+    --accent: #4ADE80; --accent-ink: #86EFAC; --accent-soft: #12301F; --accent-contrast: #052E14; --focus: #4ADE80; --ok: #4ADE80; --ok-soft: #12301F; --warn: #FBBF24; --warn-soft: #3A2A0B; --bad: #F87171; --bad-soft: #3B1515; --blue: #93B4F8; --blue-soft: #18233F; }
 }
-:root[data-theme="dark"] .ws-student { --accent: #8b85ff; --accent-ink: #b9b5ff; --accent-soft: #24224f; --accent-contrast: #12103a; --bg: #11111f; --surface-2: #1a1a2e; --surface-3: #222238; --line: #2c2c45; --line-strong: #3a3a58; --focus: #8b85ff; --side-bg: #1c1a4a; --side-ink: #e9e8ff; --side-muted: #a9a6e6; --side-active: #8b85ff; --side-active-ink: #12103a; }
+:root[data-theme="dark"] { --bg: #0E1612; --surface: #15201A; --surface-2: #19261F; --surface-3: #1F2F26; --ink: #E5EFE8; --ink-2: #C5D6CB; --muted: #96AC9E; --heading: #CDEBD6; --line: #26382D; --line-strong: #34493C;
+  --accent: #4ADE80; --accent-ink: #86EFAC; --accent-soft: #12301F; --accent-contrast: #052E14; --focus: #4ADE80; --ok: #4ADE80; --ok-soft: #12301F; --warn: #FBBF24; --warn-soft: #3A2A0B; --bad: #F87171; --bad-soft: #3B1515; --blue: #93B4F8; --blue-soft: #18233F; }
+h1, h2, h3 { color: var(--heading); font-weight: 800; letter-spacing: -0.01em; }
+body { font-size: 15.5px; }
+.btn { border-radius: 10px; font-weight: 700; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.btn-primary:hover { background: var(--green-hover); border-color: var(--green-hover); }
+.btn-ai { background: var(--surface); color: var(--accent-ink); border: 1.5px solid var(--accent); }
+.btn-ai:hover { background: var(--accent-soft); filter: none; }
+.card { box-shadow: var(--shadow); }
+.brand-mark { background: var(--accent); }
+.brand-name { color: var(--heading); }
+.tab[aria-selected="true"] { color: var(--accent-ink); border-bottom-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+.seg.done, .bar > span { background: var(--accent); border-color: var(--accent); }
+.step-item.revised { border-color: var(--accent); box-shadow: none; background: var(--accent-soft); }
+.msg.user { background: var(--surface-3); color: var(--ink); }
+.msg.assistant { background: var(--surface); }
+.quick-btn { border-radius: 14px; }
+.quick-btn .qi { background: var(--accent-soft); color: var(--accent-ink); }
+.top-search { position: relative; flex: 0 1 300px; min-width: 160px; }
+.top-search .ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.top-search .input { padding: 7px 10px 7px 34px; border-radius: 999px; background: var(--surface-2); }
+.code-chip { display: inline-flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 12px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.code-chip .mono { font-size: 1.25rem; font-weight: 600; letter-spacing: 0.12em; color: var(--accent-ink); }
+.review-card { border: 1.5px solid var(--accent); border-radius: var(--r-lg); background: var(--surface); }
+.review-card .rc-head { padding: 12px 16px; background: var(--accent-soft); border-radius: var(--r-lg) var(--r-lg) 0 0; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.review-card .rc-body { padding: 14px 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 720px) { .review-card .rc-body { grid-template-columns: minmax(0, 1fr); } }
+.review-card .rc-foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; }
+.accepted { background: var(--accent-soft) !important; border-color: var(--accent) !important; }
+
+/* ---------- Workspace identities: teacher = white sidebar, student = forest sidebar ---------- */
+.ws-student { --side-bg: #143D2B; --side-ink: #E3F4E8; --side-muted: #A9CDB5; }
 .ws-student .sidebar { background: var(--side-bg); border-right-color: transparent; color: var(--side-ink); }
-.ws-student .sidebar .brand, .ws-student .sidebar .brand-name { color: #fff; }
-.ws-student .sidebar .brand-mark { background: #fff; color: var(--side-bg); }
+.ws-student .sidebar .brand-name { color: #fff; }
+.ws-student .sidebar .brand-mark { background: #fff; color: var(--forest); }
 .ws-student .sidebar .eyebrow, .ws-student .sidebar .xs.muted { color: var(--side-muted); }
 .ws-student .sidebar .small.strong { color: #fff; }
 .ws-student .nav a { color: var(--side-ink); border-radius: 12px; }
-.ws-student .nav a:hover { background: var(--side-hover); color: #fff; }
-.ws-student .nav a[aria-current="page"] { background: var(--side-active); color: var(--side-active-ink); }
-.ws-student .nav .badge { background: #fbbf24; color: #3b2a00; }
+.ws-student .nav a:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.ws-student .nav a[aria-current="page"] { background: #fff; color: var(--forest); }
+.ws-student .nav .badge { background: #FBBF24; color: #3B2A00; }
 .ws-student .sidebar-foot { border-top-color: rgba(255, 255, 255, 0.15); }
 .ws-student .sidebar .select { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.25); }
 .ws-student .sidebar .select option { color: #111; }
-.ws-student .topbar { background: color-mix(in srgb, var(--accent-soft) 70%, var(--bg)); border-bottom-color: color-mix(in srgb, var(--accent) 25%, var(--line)); }
+.ws-student .topbar { background: color-mix(in srgb, var(--green-pale) 75%, var(--bg)); }
 .ws-student .card, .ws-student .quick-btn { border-radius: 18px; }
 .ws-student .btn { border-radius: 999px; }
 .ws-student .btn-icon { border-radius: 10px; }
-.ws-student .avatar { background: var(--accent-soft); color: var(--accent-ink); }
-.ws-student .live-hero { border-color: var(--accent); }
-.ws-student .page-intro h2, .ws-student .topbar h1 { color: var(--accent-ink); }
-.ws-teacher .topbar h1::before { content: "Teacher"; display: inline-block; margin-right: 10px; padding: 2px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); font: 700 0.7rem/1.6 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; vertical-align: 4px; }
-.ws-student .topbar h1::before { content: "Student"; display: inline-block; margin-right: 10px; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--accent-contrast); font: 700 0.7rem/1.6 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; vertical-align: 4px; }
+.ws-student .live-hero { border: 2px solid var(--accent); background: var(--surface); }
+.ws-teacher .topbar h1::before, .ws-student .topbar h1::before { display: inline-block; margin-right: 10px; padding: 2px 9px; font: 800 0.68rem/1.7 var(--font-body); letter-spacing: 0.07em; text-transform: uppercase; vertical-align: 4px; }
+.ws-teacher .topbar h1::before { content: "Teacher"; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.ws-student .topbar h1::before { content: "Student"; border-radius: 999px; background: var(--forest); color: #fff; }
 
 </style>
 <div id="app" aria-live="off"></div>
@@ -3891,6 +3933,7 @@ function topbar(title, ctx = '', ws = 'teacher') {
     <button class="btn btn-ghost btn-icon menu-btn" data-action="nav-open" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="${U.navOpen}">${icon('menu')}</button>
     <h1 id="page-title" tabindex="-1">${title}</h1>
     ${ctx}
+    ${ws !== 'research' ? html`<form class="top-search" role="search" data-submit="global-search"><label class="sr-only" for="top-q">Search</label>${icon('search')}<input class="input" id="top-q" type="search" placeholder="${ws === 'teacher' ? 'Search labs and procedures' : 'Search your labs'}" data-bind="ui.topQ" data-type="str" value="${S.ui.topQ || ''}"></form>` : ''}
     <div class="profile">
       <button class="profile-btn" data-action="menu-toggle" aria-haspopup="menu" aria-expanded="${U.menu}" aria-label="Account menu for ${user.name}">
         ${avatarEl(user)}<span class="hide-sm small strong">${displayName(user).split(' ')[0]}</span>${icon('chevDown', 'sm')}</button>
@@ -4284,7 +4327,7 @@ function activeLabCard(sess) {
   const rows = [...sm.ps].sort((a, b) => groupById(a.groupId).name.localeCompare(groupById(b.groupId).name, undefined, { numeric: true }));
   return html`<section class="card" aria-labelledby="ov-active">
     <div class="card-head"><div class="stack tight"><span class="eyebrow">Active lab</span><h2 id="ov-active">${c.title}</h2>
-      <span class="small muted">${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}</span></div>${sessionPill(sess.status)}</div>
+      <span class="small muted">${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}</span></div><div class="row wrap">${joinCodeChip(classById(sess.classId))}${sessionPill(sess.status)}</div></div>
     <div class="card-body stack loose">
       <div class="clock-block">
         <div><div class="k">Elapsed</div><div class="v">${tickSession(sess, 'elapsed')}</div></div>
@@ -4731,6 +4774,7 @@ function planPreview(d) {
       <button class="btn btn-sm btn-primary" data-action="designer-assign">${icon('send', 'sm')}Assign to class</button>
     </div>
     <div class="card-body stack loose">
+      ${d.pending ? reviewCard(d) : ''}
       ${d.editing ? html`<p class="hint">Setup, cleanup and lab time come from Class logistics. Changes here update the plan’s totals right away.</p>${procedureEditor('designer.plan', plan, { hideTiming: true })}` : planReadView(plan, r, revised)}
     </div>
   </section>`;
@@ -4849,7 +4893,7 @@ async function designerAsk(question) {
   try {
     const res = mode === 'live' ? await callLive('revise', question) : (await sleep(700), simRevise(d, question));
     d.chat = d.chat.filter((m) => m.id !== pending.id);
-    applyRevision(res, mode);
+    proposeRevision(res, mode);
   } catch (e) {
     d.chat = d.chat.filter((m) => m.id !== pending.id);
     if (e && ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(e.code)) AI.denied = true;
@@ -4867,7 +4911,7 @@ function applyRevision(res, source) {
   }
   if (res.plan) { d.revised = revisedSteps(old, res.plan); d.plan = res.plan; d.planMeta = { source, at: Date.now() }; }
   const check = planDiff(old, d.plan, oldRes, computeResources(d.plan, d));
-  pushMsg({ role: 'assistant', source, text: res.reply, changes: res.changes || [], check });
+  pushMsg({ role: 'assistant', source, text: 'Accepted. The plan was updated and the changed steps are highlighted.', changes: res.changes || [], check });
 }
 
 function designerContent() {
@@ -4889,6 +4933,63 @@ function reviewModal() {
       ${m.error ? html`<div class="err">${icon('alert', 'sm')}${m.error}</div>` : ''}`,
     foot: html`<button class="btn" data-action="modal-close">Keep editing</button><button class="btn btn-primary" data-action="review-confirm">${icon('check')}Approve and choose periods</button>` });
 }
+
+/* =====================================================================
+   AI revisions as review cards: nothing changes until the teacher accepts.
+   ===================================================================== */
+function applyRevisionTo(d, res) {
+  if (res.groupSize && res.groupSize >= 1 && res.groupSize <= 8) d.logistics.groupSize = res.groupSize;
+  if (res.labMinutes && res.labMinutes > 0) d.logistics.labMinutes = res.labMinutes;
+  for (const u of res.inventoryUpdates || []) {
+    const item = d.inventory.find((i) => i.name.trim().toLowerCase() === String(u.name || '').trim().toLowerCase()) || d.inventory.find((i) => normName(i.name).some((w) => normName(u.name).includes(w)));
+    if (item && Number.isFinite(+u.quantity) && +u.quantity >= 0) item.qty = +u.quantity;
+  }
+  if (res.plan) d.plan = res.plan;
+}
+function proposeRevision(res, source) {
+  const d = S.designer;
+  const d2 = clone(d); applyRevisionTo(d2, res);
+  const unchanged = JSON.stringify(stripIds(d2.plan)) === JSON.stringify(stripIds(d.plan)) && d2.logistics.groupSize == d.logistics.groupSize && d2.logistics.labMinutes == d.logistics.labMinutes && JSON.stringify(d2.inventory) === JSON.stringify(d.inventory);
+  if (unchanged) { pushMsg({ role: 'assistant', source, text: res.reply }); d.pending = null; return; }
+  const b = computeResources(d.plan, d), a = computeResources(d2.plan, d2);
+  const mats = a.materials.map((m) => { const o = b.materials.find((x) => x.name === m.name); return o && (o.total !== m.total || o.status !== m.status) ? `${m.name}: ${fmtQty(o.total)} → ${fmtQty(m.total)}${m.status !== o.status ? ` (${m.status === 'ok' ? 'now enough' : m.note || m.status})` : ''}` : null; }).filter(Boolean);
+  d.pending = { id: uid(), source, res, at: Date.now(), changes: res.changes || [], reason: res.reply,
+    time: [b.time.total, a.time.total, a.time.available], groups: [b.totalGroups, a.totalGroups], problems: [b.issues.filter((i) => i.sev === 'bad').length, a.issues.filter((i) => i.sev === 'bad').length], mats };
+  pushMsg({ role: 'assistant', source, text: `${res.reply}\n\nReview the proposed change on the plan before it’s applied.` });
+}
+function reviewCard(d) {
+  const p = d.pending;
+  return html`<section class="review-card" aria-labelledby="rc-h" data-key="rc-${p.id}">
+    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Claude</span>` : simTag('Simulated')}</div>
+    <div class="rc-body">
+      <div class="stack tight"><span class="eyebrow">Suggested change</span>${p.changes.length ? html`<ul class="ul-plain small">${p.changes.map((c) => html`<li>${c}</li>`)}</ul>` : html`<p class="small">Updates the plan as described.</p>`}</div>
+      <div class="stack tight"><span class="eyebrow">Reason</span><p class="small">${p.reason}</p></div>
+      <div class="stack tight"><span class="eyebrow">Effect on time</span><p class="small num">${p.time[0]} → <strong>${p.time[1]}</strong> of ${p.time[2]} min${p.time[1] > p.time[2] ? ' (still over)' : ''}</p></div>
+      <div class="stack tight"><span class="eyebrow">Effect on groups and materials</span><p class="small num">Groups: ${p.groups[0]} → <strong>${p.groups[1]}</strong> · problems to resolve: ${p.problems[0]} → <strong>${p.problems[1]}</strong></p>${p.mats.length ? html`<ul class="ul-plain xs">${p.mats.slice(0, 5).map((m) => html`<li>${m}</li>`)}</ul>` : ''}</div>
+    </div>
+    <div class="rc-foot"><button class="btn btn-primary" data-action="rc-accept">${icon('check', 'sm')}Accept</button><button class="btn" data-action="rc-edit">${icon('pencil', 'sm')}Accept and edit</button><button class="btn btn-ghost" data-action="rc-reject">${icon('x', 'sm')}Reject</button>
+      <span class="xs muted" style="align-self:center">Labby recalculated these numbers; the AI didn’t.</span></div>
+  </section>`;
+}
+function joinCodeChip(cls) {
+  return html`<span class="code-chip"><span class="xs strong">Class code</span><span class="mono">${cls.joinCode}</span><button class="btn btn-xs btn-primary" data-action="copy-code" data-cid="${cls.id}">${icon('copy', 'sm')}Copy code</button></span>`;
+}
+function recentWork(labs) {
+  const done = labs.filter((x) => x.view.status === 'completed');
+  const mine = S.cpRecords.filter((r) => r.submittedAt && (r.submittedBy === S.currentUserId || (!r.studentId && studentEnrollments(S.currentUserId).length))).length;
+  return html`<section class="card" aria-labelledby="so-recent"><div class="card-head"><h2 id="so-recent">Recent work</h2></div>
+    <div class="card-body">${done.length ? done.slice(0, 4).map((x) => html`<div class="mini-group" style="grid-template-columns:minmax(0,1fr) auto"><div class="stack tight"><a class="lib-title" href="#s/lab/${x.a.id}">${x.view.title}</a><span class="xs muted">${x.view.className} · ${fmtSchedule(x.a)}</span></div>${studentPill('completed')}</div>`)
+      : html`<p class="small muted">Labs you finish show up here with your saved answers.</p>`}</div></section>`;
+}
+const RESEARCH_ACTIONS = {
+  'rc-accept': () => { const d = S.designer; const p = d.pending; if (!p) return; d.pending = null; applyRevision(p.res, p.source); commit(); toast('Change accepted. Highlighted steps changed.'); },
+  'rc-edit': () => { const d = S.designer; const p = d.pending; if (!p) return; d.pending = null; applyRevision(p.res, p.source); d.editing = true; commit(); },
+  'rc-reject': () => { const d = S.designer; d.pending = null; pushMsg({ role: 'assistant', source: 'labby', text: 'Rejected. The plan wasn’t changed.' }); commit(); },
+  's-search-clear': () => { S.ui.sLabQuery = ''; S.ui.topQ = ''; commit(); },
+};
+const RESEARCH_SUBMITS = {
+  'global-search': () => { const q = (S.ui.topQ || '').trim(); const ws = workspaceOfRoute(U.route.name); if (ws === 'teacher') { S.ui.libQuery = q; S.ui.libStatus = 'all'; go('library'); } else { S.ui.sLabQuery = q; S.ui.sLabFilter = 'all'; go('s/labs'); } commit(); },
+};
 
 /* =====================================================================
    Procedures & Lab Library, procedure import + review, and lab editor.
@@ -5146,7 +5247,7 @@ function liveView() {
     <section class="card card-pad stack" aria-labelledby="ls-title">
       <div class="session-head">
         <div class="stack tight" style="min-width:0"><div class="row wrap">${sessionPill(sess.status)}<span class="tag">${icon('lock', 'sm')}Version ${v.number}</span></div>
-          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span></div>
+          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>${sess.status !== 'completed' ? joinCodeChip(cls) : ''}</div>
         ${sess.status === 'scheduled' ? html`<div class="stack tight" style="align-items:flex-end"><span class="small muted">Scheduled ${sess.scheduledFor === todayISO() ? 'for today' : 'for ' + fmtDate(new Date(sess.scheduledFor + 'T12:00').getTime())} · ${plannedMinutes(c)} min planned</span>
           ${groupsAvailable ? html`<button class="btn btn-primary" data-action="session-start" data-sid="${sess.id}">${icon('play')}Start session</button>`
             : html`<a class="btn" href="#class-${cls.id}" data-action="class-period-go" data-cid="${cls.id}" data-pid="${sess.periodId}">${icon('layers')}Arrange lab groups first</a>`}</div>`
@@ -5744,7 +5845,7 @@ function sessionLine(v) {
 function labCard(x) {
   const v = x.view; const prep = v.sections.prep;
   return html`<article class="card class-card" data-key="slc-${v.assignmentId}">
-    <div class="row between top wrap"><div class="stack tight" style="min-width:0"><h3>${v.title}</h3><span class="small muted">${v.className} · ${v.periodName}</span></div>${studentPill(v.status)}</div>
+    <div class="row between top wrap"><div class="stack tight" style="min-width:0"><h3>${v.title}</h3><span class="small muted">${v.className} · ${v.periodName}${v.teacherName ? ` · ${v.teacherName}` : ''}</span></div>${studentPill(v.status)}</div>
     ${v.description ? html`<p class="small">${v.description}</p>` : ''}
     <div class="row wrap small" style="gap:6px 14px"><span>${icon('calendar', 'sm')} ${fmtSchedule({ scheduledFor: v.scheduledFor, scheduledTime: v.scheduledTime })}</span><span>${icon('clock', 'sm')} About ${v.durationMin} min</span></div>
     ${prep && prep.length ? html`<div class="next-lab"><span class="eyebrow">Prepare</span><span class="small">${prep[0]}${prep.length > 1 ? ` (+${prep.length - 1} more)` : ''}</span></div>` : ''}
@@ -5762,7 +5863,7 @@ function studentClassSelect() {
 function studentOverview() {
   const u = me(); const enr = studentEnrollments(u.id);
   const intro = html`<div class="page-intro"><div class="stack tight"><p class="eyebrow">${fmtDateLong(Date.now())}</p><h2 style="font-size:1.45rem">${greeting()}, ${displayName(u)}.</h2></div>
-    <a class="btn" href="#s/join">${icon('key')}Join a class</a></div>`;
+    <div class="row wrap"><a class="btn btn-primary" href="#s/live">${icon('activity')}Join Live Session</a><a class="btn" href="#s/join">${icon('key')}Join a class</a></div></div>`;
   if (!enr.length) return html`${intro}<div class="card">${emptyState({ ico: 'key', title: 'Join your first class', text: 'Ask your teacher for the class code or join link. Once you join, your labs show up here.', actions: html`<a class="btn btn-primary" href="#s/join">${icon('key')}Join a class</a>` })}</div>`;
   const labs = studentLabsFor(u.id, S.ui.sClass);
   const live = labs.filter((x) => x.view.status === 'ready' || x.view.status === 'inprogress');
@@ -5770,7 +5871,7 @@ function studentOverview() {
   const prepping = upcoming.filter((x) => (x.view.sections.prep || []).length);
   return html`${intro}<div class="stack loose">
     ${live.map((x) => { const v = x.view; return html`<section class="card live-hero" aria-labelledby="lh-${v.assignmentId}" data-key="lh-${v.assignmentId}">
-      <div class="card-body row between wrap"><div class="stack tight"><div class="row wrap">${studentPill(v.status)}${v.sessionStatus === 'paused' ? html`<span class="pill tone-warn">${icon('pause')}Paused by teacher</span>` : ''}</div>
+      <div class="card-body row between wrap"><div class="stack tight"><span class="eyebrow">Continue your lab</span><div class="row wrap">${studentPill(v.status)}${v.sessionStatus === 'paused' ? html`<span class="pill tone-warn">${icon('pause')}Paused by teacher</span>` : ''}</div>
         <h2 id="lh-${v.assignmentId}" style="font-size:1.35rem">${v.title}</h2><span class="small muted">${v.className} · ${v.periodName}${v.group ? ` · ${v.group.name}` : ''}</span></div>
         <a class="btn btn-primary btn-lg" href="#s/live/${v.sessionId}">${icon('activity')}${v.status === 'inprogress' ? 'Resume Live Session' : 'Enter Live Session'}</a></div></section>`; })}
     <div class="grid grid-main-side">
@@ -5782,7 +5883,8 @@ function studentOverview() {
         <div class="card-body">${prepping.length ? prepping.slice(0, 2).map((x) => html`<div class="stack tight" style="margin-bottom:12px"><a class="lib-title small" href="#s/lab/${x.a.id}">${x.view.title}</a>${prepList(x.view, true)}</div>`)
           : html`<p class="small muted">No preparation tasks right now.</p>`}</div></section>
     </div>
-    <section class="stack" aria-labelledby="so-classes"><div class="row between"><h2 id="so-classes">My classes</h2><a class="btn btn-sm" href="#s/classes">All classes</a></div>
+    ${recentWork(labs)}
+    <section class="stack" aria-labelledby="so-classes"><div class="row between"><h2 id="so-classes">Your classes</h2><a class="btn btn-sm" href="#s/classes">All classes</a></div>
       <div class="grid grid-3">${enr.map(studentClassCard)}</div></section>
   </div>`;
 }
@@ -5818,8 +5920,9 @@ function studentLabsView() {
   const all = studentLabsFor(S.currentUserId, S.ui.sClass);
   const f = S.ui.sLabFilter || 'all';
   const counts = {}; all.forEach((x) => { counts[x.view.status] = (counts[x.view.status] || 0) + 1; });
-  const list = all.filter((x) => f === 'all' || x.view.status === f);
-  return html`<div class="page-intro"><p>Labs your teachers have published. You only see what each teacher has released so far.</p></div>
+  const q = (S.ui.sLabQuery || '').trim().toLowerCase();
+  const list = all.filter((x) => (f === 'all' || x.view.status === f) && (!q || `${x.view.title} ${x.view.className} ${x.view.description}`.toLowerCase().includes(q)));
+  return html`<div class="page-intro"><p>Labs your teachers have published. You only see what each teacher has released so far.</p>${q ? html`<span class="row small">Results for “${S.ui.sLabQuery}” <button class="link-btn" data-action="s-search-clear">Clear search</button></span>` : ''}</div>
     <div class="chips" role="group" aria-label="Filter labs by status" style="margin-bottom:14px">
       <button class="chip" aria-pressed="${f === 'all'}" data-action="s-lab-filter" data-f="all">All<span class="count">${all.length}</span></button>
       ${Object.keys(STUDENT_LAB_STATUS).map((k) => html`<button class="chip" aria-pressed="${f === k}" data-action="s-lab-filter" data-f="${k}">${icon(STUDENT_LAB_STATUS[k].icon, 'sm')}${STUDENT_LAB_STATUS[k].label}<span class="count">${counts[k] || 0}</span></button>`)}</div>

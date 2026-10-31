@@ -16,16 +16,12 @@ function studentPage(r) {
 }
 /** A join link opened by someone without a student workspace yet (teacher or researcher account). */
 function joinStandalone(r) {
-  return html`${demoBand()}<main class="placeholder-wrap" id="main" tabindex="-1" style="max-width:760px">
+  return html`<main class="placeholder-wrap" id="main" tabindex="-1" style="max-width:760px">
     <div class="row between wrap"><a class="brand" href="#${homeFor()}" style="padding:0"><span class="brand-mark">${BRAND_MARK}</span><span class="brand-name">Labby</span></a><a class="btn btn-sm" href="#${homeFor()}">Back to my workspace</a></div>
     <h1 id="page-title" tabindex="-1">Join a class</h1>${joinView(r)}</main>`;
 }
-/** Offer a file to the viewer: the page's downloads capability when present, otherwise a normal browser download. */
+/** Saves a file through a normal browser download. */
 async function saveFile(filename, data) {
-  try {
-    const d = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('downloads') : null;
-    if (d) { await d.save({ filename, data }); return true; }
-  } catch (e) { if (e && e.code === 'declined') return false; }
   try {
     const blob = data instanceof Blob ? data : new Blob([data], { type: 'text/plain' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove();
@@ -77,7 +73,7 @@ const STUDENT_SUBMITS = {
     const u = me(); if (u) u.lastWorkspace = 'student';
     commit(); go(`s/live/${res.sess.id}`);
     const where = `${res.cls.name} · ${periodName(res.cls.id, res.sess.periodId)}`;
-    toast(res.enrolled ? `You joined ${where} and ${res.group.name}. Enter the session when your group is ready.` : res.grouped ? `You were added to ${res.group.name}. Enter the session when your group is ready.` : `Found your session: ${sessionContent(res.sess).title}.`, 'checkCircle');
+    toast(res.added ? `You joined ${where} as a guest, in ${res.group.name}. Enter the session when your group is ready.` : `Found your session: ${sessionContent(res.sess).title}.`, 'checkCircle');
   },
   'join-lookup': () => { const d = S.ui.joinDraft; d.code = normCode(d.code); d.looked = true; d.periodId = ''; d.linkPeriod = ''; d.fromLink = d.fromLink || ''; d.periodError = ''; commit(); },
 };

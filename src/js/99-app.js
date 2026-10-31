@@ -26,7 +26,6 @@ function modalView() {
     case 'end': return endSessionModal();
     case 'live-code': return liveCodeModal();
     case 'live-code-regen': return liveCodeRegenModal();
-    case 'reset': return resetModal();
     case 'student-preview': return studentPreviewModal();
     case 'cp-review': return cpReviewModal();
     case 'image': return modalShell({ title: U.modal.name, wide: true, body: html`<img src="${U.modal.url}" alt="${U.modal.name}" style="max-width:100%;border-radius:12px">`, foot: html`<button class="btn" data-action="modal-close">Close</button>` });
@@ -43,7 +42,7 @@ function render() {
   U.route = r;
   const user = me();
   let page;
-  if (!user) { page = html`${demoBand()}${authView(r)}`; document.title = 'Labby'; }
+  if (!user) { page = authView(r); document.title = 'Labby'; }
   else if (r.name === 's/onboarding') { page = onboardingView(); document.title = 'Set up your profile · Labby'; }
   else if (r.name === 'join') { page = workspacesFor(user).includes('student') ? wsShell('student', r, 'Join a class', joinView(r)) : joinStandalone(r); document.title = 'Join a class · Labby'; }
   else {
@@ -118,11 +117,8 @@ function progFromEl(el) { return S.progress.find((p) => p.id === el.dataset.pid)
 
 const ACTIONS = {
   ...StudentSite.actions,
-  /* auth + demo */
-  'demo-login': (el) => { const u = byId(S.users, el.dataset.uid); S.currentUserId = u.id; commit(); go(homeFor(u.role)); },
+  /* auth */
   'signout': () => { S.currentUserId = null; U.menu = false; commit(); go('signin'); toast('Signed out.'); },
-  'demo-reset-ask': () => { U.modal = { type: 'reset' }; commit(); },
-  'demo-reset': () => resetDemo(),
   'toast-close': (el) => { U.toasts = U.toasts.filter((t) => t.id !== el.dataset.id); commit(); },
   /* shell */
   'nav-open': () => { U.navOpen = true; commit(); setTimeout(() => { const a = document.querySelector('#sidebar a[aria-current]') || document.querySelector('#sidebar a'); if (a) a.focus(); }, 30); },
@@ -147,12 +143,6 @@ const ACTIONS = {
   'class-tab': (el) => { S.ui.classTab = el.dataset.tab; commit(); },
   'class-period': (el) => { S.ui.classPeriod[el.dataset.cid] = el.dataset.pid; commit(); },
   'class-period-go': (el) => { S.ui.classPeriod[el.dataset.cid] = el.dataset.pid; S.ui.classTab = 'roster'; },
-  'sim-join': (el) => {
-    const FIRST = ['Riley', 'Amir', 'Lena', 'Marcus', 'Ines', 'Tomas', 'Keiko', 'Sade', 'Victor', 'Hazel'], LAST = ['Okoro', 'Vargas', 'Brennan', 'Choi', 'Delgado', 'Weiss', 'Nakamura', 'Ahmed'];
-    const st = { id: uid(), name: `${FIRST[Math.floor(Math.random() * FIRST.length)]} ${LAST[Math.floor(Math.random() * LAST.length)]}` };
-    S.students.push(st); S.enrollments.push({ id: uid(), classId: el.dataset.cid, periodId: el.dataset.pid, studentId: st.id, joinedAt: Date.now() });
-    commit(); toast(`Demo: ${st.name} joined ${periodName(el.dataset.cid, el.dataset.pid)} with the class code.`, 'zap');
-  },
   'group-auto': (el) => { const n = arrangeGroups(el.dataset.cid, el.dataset.pid, S.ui.groupSize || 4); commit(); toast(`Arranged ${plural(n, 'lab group')} in ${periodName(el.dataset.cid, el.dataset.pid)}.`, 'layers'); },
   'group-add': (el) => { const gs = groupsIn(el.dataset.cid, el.dataset.pid); S.groups.push({ id: uid(), classId: el.dataset.cid, periodId: el.dataset.pid, name: `Bench ${gs.length + 1}`, memberIds: [] }); commit(); },
   'assign-open': (el) => {
@@ -176,7 +166,6 @@ const ACTIONS = {
   'inv-add': () => { S.designer.inventory.push({ id: uid(), name: '', qty: null, unit: '', kind: 'reusable', notes: '' }); commit(); U.focusAfter = `#inv-${S.designer.inventory.length - 1}-name`; },
   'inv-remove': (el) => { S.designer.inventory.splice(+el.dataset.index, 1); commit(); },
   'designer-generate': () => designerGenerate(),
-  'ai-mode': (el) => { S.designer.mode = el.dataset.mode; commit(); },
   'designer-suggest': (el) => designerAsk(el.dataset.text),
   'ai-stop': () => { if (AI.ctl) AI.ctl.abort(); },
   'designer-revise-focus': () => { S.designer.tab = 'assistant'; commit(); U.focusAfter = '#dz-msg'; },
@@ -201,7 +190,6 @@ const ACTIONS = {
   'lab-duplicate': (el) => { const src = labById(el.dataset.lid); const c = clone(latestVersion(src).content); c.title = `${c.title} (copy)`; c.steps.forEach((s) => { s.id = uid(); }); c.materials.forEach((m) => { m.id = uid(); }); const lab = newLab(c, 'duplicate'); S.ui.libStatus = 'all'; commit(); toast(`Duplicated as “${c.title}” (draft).`, 'copy'); return lab; },
   'lab-archive': (el) => { const lab = labById(el.dataset.lid); lab.archived = el.dataset.on === '1'; lab.updatedAt = Date.now(); commit(); toast(lab.archived ? `Archived “${labTitle(lab)}”. Find it under Archived. Assigned sessions aren’t affected.` : `Restored “${labTitle(lab)}”.`, lab.archived ? 'archive' : 'reopen'); },
   'import-paste': () => importText(S.ui.pasteText || '', 'paste'),
-  'import-sample': () => importText(SAMPLE_IMPORT_TEXT, 'sample'),
   'import-discard': () => { S.ui.importDraft = null; U.importFile = null; commit(); toast('Import discarded.'); },
   'import-save': (el) => saveImport(el.dataset.state),
   'editor-save': (el) => editorSave(el.dataset.state),
@@ -222,15 +210,6 @@ const ACTIONS = {
   'group-open': (el) => { U.drawer = el.dataset.pid; commit(); },
   'drawer-close': () => { U.drawer = null; commit(); },
   'checkpoint-approve': (el) => { const p = progFromEl(el); if (!p || !p.atCheckpoint) return; approveCheckpoint(p); commit(); toast(`Approved. ${groupById(p.groupId).name} can continue.`, 'check'); },
-  'demo-toggle': () => { U.demoOpen = !U.demoOpen; commit(); },
-  'demo-advance': (el) => {
-    const p = progFromEl(el); const sess = sessionById(p.sessionId); const g = groupById(p.groupId);
-    const r = Sim.advance(p, sess);
-    const msg = { finished: `${g.name} has already finished.`, offline: `${g.name}’s device is offline. Reconnect it first.`, checkpoint: `${g.name} is waiting for your checkpoint approval.`, started: `${g.name} started step 1.`, requested: `${g.name} asked you to check “${sessionContent(sess).steps[p.stepIndex].title}”.`, advanced: p.finishedAt ? `${g.name} finished the lab.` : `${g.name} moved to step ${p.stepIndex + 1}.` }[r] || `${g.name}: checkpoint updated.`;
-    commit(); toast(msg, 'zap');
-  },
-  'demo-record': (el) => { const p = progFromEl(el); const sess = sessionById(p.sessionId); if (p.connection === 'lost') { toast('That device is offline. Reconnect it first.', 'wifiOff'); return; } const ok = Sim.record(p, sess); commit(); toast(ok ? `${groupById(p.groupId).name} recorded a measurement.` : 'Every measurement for this step is already recorded.', 'ruler'); },
-  'demo-conn': (el) => { const p = progFromEl(el); Sim.toggleConnection(p); commit(); },
   /* help */
   'help-scope': (el) => { S.ui.helpScope = el.dataset.scope; commit(); },
   'help-tab': (el) => { S.ui.helpTab = el.dataset.tab; commit(); },
@@ -241,12 +220,6 @@ const ACTIONS = {
   'help-open-group': (el) => { const h = byId(S.help, el.dataset.hid); const p = S.progress.find((x) => x.sessionId === h.sessionId && x.groupId === h.groupId); openSession(h.sessionId, 'live'); if (p) { U.drawer = p.id; commit(); } },
 };
 const CHANGES = {
-  'demo-role': (el) => {
-    const v = el.value;
-    if (v === 'out') { S.currentUserId = null; commit(); go('signup'); return; }
-    if (v === 'own') return;
-    const u = S.users.find((x) => x.id === v); if (!u) return; S.currentUserId = u.id; commit(); go(homeFor());
-  },
   'ctx-class': (el) => { setCtxClass(el.value); U.drawer = null; commit(); },
   'ctx-period': (el) => { setCtxPeriod(el.value); U.drawer = null; commit(); },
   'ctx-session': (el) => { if (el.value) { setCtxSession(el.value); U.drawer = null; commit(); } },
@@ -259,23 +232,12 @@ const CHANGES = {
   'mat-basis': (el) => { const m = getPath(S, el.dataset.path); const v = el.value; if (v === 'student') { m.per = 'student'; m.sharedBy = 1; } else { m.per = 'group'; m.sharedBy = v.startsWith('share') ? +v.slice(5) : 1; } commit(); },
   'cp-toggle': (el) => { const c = getPath(S, el.dataset.path); normalizeContent(c); const ex = checkpointAfter(c, el.dataset.sid); if (ex) c.checkpoints = c.checkpoints.filter((x) => x !== ex); else { const st = c.steps.find((x) => x.id === el.dataset.sid); c.checkpoints.push({ ...blankCheckpoint(el.dataset.sid), title: `Teacher check: ${st ? st.title : 'step'}`, kind: 'info', responseRequired: false, approvalRequired: true, questions: [] }); } commit(); },
   'import-file': (el) => { const f = el.files && el.files[0]; el.value = ''; importFile(f); },
-  'demo-cat': (el) => { S.ui.demoCat = el.value; S.ui.demoMsg = SAMPLE_HELP[el.value][0]; commit(); },
 };
 const SUBMITS_BASE = {
   signin: () => submitSignin(),
   signup: () => submitSignup(),
   'create-class': () => submitCreateClass(),
   'designer-ask': () => designerAsk(S.designer.draftMsg),
-  'demo-help': () => {
-    const sess = sessionById(S.ui.ctx.sessionId); const ps = progressFor(sess.id);
-    const p = ps.find((x) => x.id === S.ui.demoGroupId) || ps[0];
-    const cat = S.ui.demoCat || 'Equipment'; const msg = (S.ui.demoMsg ?? SAMPLE_HELP[cat][0]).trim();
-    if (!msg) { toast('Type a message for the help request.', 'alert'); return; }
-    const res = Sim.help(p, sess, cat, msg);
-    S.ui.demoMsg = SAMPLE_HELP[cat][(SAMPLE_HELP[cat].indexOf(msg) + 1) % SAMPLE_HELP[cat].length];
-    commit();
-    toast(res.updated ? `${groupById(p.groupId).name} already had an open ${cat.toLowerCase()} request, so it was updated instead of duplicated.` : `${groupById(p.groupId).name} sent a ${cat.toLowerCase()} help request.`, 'lifebuoy');
-  },
 };
 
 const SUBMITS = SUBMITS_BASE;
@@ -357,8 +319,7 @@ function tick() {
   });
   const user = me();
   if (user && user.role === 'teacher') {
-    if (S.demo.autoplay && tickCount % 6 === 0) { autoplayTick(); commit(); }
-    else if (tickCount % 15 === 0 && U.route && ['overview', 'live', 'help'].includes(U.route.name)) commit();
+    if (tickCount % 15 === 0 && U.route && ['overview', 'live', 'help'].includes(U.route.name)) commit();
   }
   if (user && user.role !== 'teacher' || (U.route && /^(s|r)\//.test(U.route.name))) {
     if (tickCount % 10 === 0 && U.route && ['s/overview', 's/live', 's/lab', 's/labs', 'r/overview'].includes(U.route.name)) commit();

@@ -5,12 +5,16 @@ import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { newPromptId, writeComprehensionQuestion } from './brain.ts';
 import { config } from './config.ts';
+import { askGemma } from './gemma.ts';
 import { dashboardChannel, studentChannel } from './events.ts';
 import { HttpError } from './http-error.ts';
 import { ensureLab, teamProgress } from './labs.ts';
 import { deliverPrompt } from './prompts.ts';
 import { findLabByCode, getLab, listLabs, newJoinCode, saveLab, saveStudent, studentsInLab } from './store.ts';
 import type { Lab, LabStep, Prompt, StudentProgress } from '../shared/types.ts';
+
+/** A full lab plan is long, so Live AI gets more room than the short guidance replies. */
+const AI_REPLY_TOKENS = 3500;
 
 export const dashboardRoutes = Router();
 
@@ -63,6 +67,25 @@ dashboardRoutes.post('/labs', (req, res) => {
       steps: Array.isArray(steps) ? steps.map(String) : null,
     }),
   );
+});
+
+/** Labby's Live AI: lab planning and guidance on camera photos, answered by Gemma. */
+dashboardRoutes.post('/ai', async (req, res) => {
+  const { prompt, images } = req.body;
+  if (typeof prompt !== 'string' || !prompt.trim()) throw new HttpError(400, 'prompt is required');
+
+  const reply = await askGemma<object>({
+    system: 'You reply with only one JSON object, in exactly the shape you are asked for.',
+    prompt,
+    images: Array.isArray(images) && images.length > 0 ? images.map(String) : undefined,
+    schema: 'json',
+    maxTokens: AI_REPLY_TOKENS,
+  }).catch((error: Error) => {
+    if (error instanceof SyntaxError) throw new HttpError(422, 'Gemma did not reply with valid JSON');
+    throw error;
+  });
+
+  res.json(reply);
 });
 
 dashboardRoutes.get('/labs', (_req, res) => {
@@ -149,6 +172,13 @@ dashboardRoutes.post('/labs/:id/students/:studentId/resolve', (req, res) => {
   if (!student) throw new HttpError(404, 'Student not found');
 
   saveStudent({ ...student, helpRequested: false, alert: null });
+  res.json({ ok: true });
+});
+
+/** Stops new students joining with this code. Students already in keep working. */
+dashboardRoutes.post('/labs/:id/close', (req, res) => {
+  const lab = labFor(req);
+  if (!lab.closed) saveLab({ ...lab, closed: true });
   res.json({ ok: true });
 });
 

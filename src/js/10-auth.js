@@ -1,7 +1,7 @@
 /* =====================================================================
-   Sign in / create account with role selection (simulated auth).
+   Sign in / create account with role selection (accounts are kept in this browser).
    Production: real authentication; the role is stored server-side and
-   every API call checks it. Passwords are never stored in this demo.
+   every API call checks it. Passwords are never stored.
    ===================================================================== */
 U.auth = { signin: { email: '', password: '', error: '' }, signup: { name: '', email: '', password: '', role: '', school: '', errors: {} } };
 
@@ -25,12 +25,6 @@ function authView(route) {
         <a class="tab" role="tab" href="#signup" aria-selected="${isUp}">Create account</a>
       </div>
       <div style="padding-top:18px">${isUp ? signupForm(a.signup) : signinForm(a.signin)}</div>
-    </div>
-    <div class="demo-accounts stack">
-      <div class="row wrap"><span class="demo-tag">${icon('zap', 'sm')}Demo accounts</span><span class="small">Simulated sign-in. No password is checked or stored.</span></div>
-      <div class="row wrap">
-        ${S.users.filter((u) => u.demo).map((u) => html`<button class="btn btn-sm btn-demo" data-action="demo-login" data-uid="${u.id}">${icon(u.role === 'teacher' ? 'board' : u.role === 'student' ? 'cap' : 'compass', 'sm')}${u.name} · ${u.role === 'independent' ? 'Independent' : cap(u.role)}${u.role === 'teacher' ? ' (sample classes)' : ''}</button>`)}
-      </div>
     </div>
   </main></div>`;
 }
@@ -74,7 +68,7 @@ function submitSignin() {
   const email = f.email.trim().toLowerCase();
   const user = S.users.find((u) => u.email.toLowerCase() === email);
   if (!email || !f.password) { f.error = 'Enter your email and password.'; commit(); return; }
-  if (!user) { f.error = 'No Labby account uses this email in this browser. Create an account, or use one of the demo accounts below.'; commit(); return; }
+  if (!user) { f.error = 'No Labby account uses this email in this browser. Create an account first.'; commit(); return; }
   f.error = ''; f.password = '';
   S.currentUserId = user.id; commit(); go(homeFor());
 }

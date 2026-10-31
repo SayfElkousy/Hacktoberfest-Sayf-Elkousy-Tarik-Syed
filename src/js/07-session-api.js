@@ -31,7 +31,7 @@ function classTrack(sess, groupId) {
   const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === groupId);
   if (!p) return null;
   const g = groupById(groupId);
-  return { kind: 'class', key: sess.id, sess, p, c: sessionContent(sess), groupId, versionId: sess.versionId, members: g ? g.memberIds : [], open: sess.status === 'active' };
+  return { kind: 'class', key: sess.id, sess, p, c: sessionContent(sess), groupId, versionId: sess.versionId, members: sessionMemberIds(sess, g), open: sess.status === 'active' };
 }
 function ensureProgressShape(p) {
   p.gates = p.gates || {}; p.joined = p.joined || []; p.aiFlags = p.aiFlags || []; p.guidance = p.guidance || [];
@@ -120,7 +120,7 @@ const Engine = {
     if (p.atCheckpoint) return { status: 'blocked', message: 'Finish the checkpoint first.' };
     if (idx !== p.stepIndex) return { status: 'stale', message: `Step ${idx + 1} isn’t the current step.` };
     p.completed.push({ index: idx, stepId, at, by, source });
-    logActivity(p, `Completed step ${idx + 1}: ${c.steps[idx].title}${source === 'teacher-demo' ? ' (demo control)' : ''}`, at);
+    logActivity(p, `Completed step ${idx + 1}: ${c.steps[idx].title}`, at);
     emitEvent('step.completed', { trackKey: t.key, groupId: t.groupId, stepId, by, source });
     const cp = checkpointAfter(c, stepId);
     if (cp) {
@@ -174,16 +174,6 @@ const Engine = {
     emitEvent('checkpoint.returned', { trackKey: t.key, groupId: t.groupId, checkpointId: cpId, note: g.note, by });
     return { status: 'ok' };
   },
-  /** Demo helper: fill a checkpoint with clearly labeled sample answers so simulated groups can move on. */
-  simulateResponses(t, cp) {
-    const who = cp.scope === 'individual' ? (t.members.length ? [t.members[0]] : [null]) : [null];
-    for (const sid of who) {
-      const resp = {};
-      cp.questions.forEach((q) => { resp[q.id] = q.type === 'mc' ? (q.correct || (q.options[0] || {}).id || '') : q.type === 'numeric' ? '3.4' : '(Simulated response from demo controls)'; });
-      const r = ensureRecord(t, cp, sid); r.simulated = true;
-      this.saveResponse(t, cp.id, sid, resp, true);
-    }
-  },
 };
 
 /* ---------- Public API for class sessions ---------- */
@@ -196,9 +186,9 @@ const LabSessionAPI = {
     if (!sess) return { ok: false, code: 'not_found', message: 'This lab session doesn’t exist.' };
     const a = S.assignments.find((x) => x.id === sess.assignmentId);
     const enr = S.enrollments.find((e) => e.studentId === userId && e.classId === sess.classId && e.periodId === sess.periodId);
-    if (!enr) return { ok: false, code: 'not_enrolled', message: 'You aren’t enrolled in the class period this session belongs to.' };
+    if (!enr && !sessionGuest(sess, userId)) return { ok: false, code: 'not_enrolled', message: 'You aren’t part of this session. Enter the live session code your teacher posted to join it.' };
     if (!a || a.published === false) return { ok: false, code: 'not_published', message: 'Your teacher hasn’t published this lab yet.' };
-    const group = studentGroup(sess.classId, sess.periodId, userId);
+    const group = sessionGroupFor(sess, userId);
     if (!group) return { ok: false, code: 'no_group', message: 'Your teacher hasn’t put you in a lab group yet. Ask them to add you to a group.' };
     if (sess.status === 'completed') return { ok: true, code: 'completed', readOnly: true, sess, a, group, message: 'This session is complete.' };
     if (sess.status === 'paused') return { ok: true, code: 'paused', readOnly: true, sess, a, group, message: 'Your teacher paused the session.' };
@@ -222,10 +212,11 @@ const LabSessionAPI = {
     return { ...auth, track: t };
   },
   /**
-   * A student types the live session code their teacher posted. A valid code
-   * enrolls them in that class period and puts them in a lab group when they
-   * aren't in one yet, so they can go straight to the session. In production
-   * this is a rate-limited server endpoint.
+   * A student types the live session code their teacher posted. The code is
+   * enough on its own: students who aren't in the class (or are in another
+   * period) join as guests of this one session, placed in its smallest lab
+   * group. Nothing is added to the class roster. In production this is a
+   * rate-limited server endpoint.
    */
   joinByCode({ participantId, code }) {
     const c = normCode(code);
@@ -246,26 +237,16 @@ const LabSessionAPI = {
     if (cls.teacherId === participantId) return { ok: false, code: 'owner', message: 'You teach this class. Open the session from Live Progress instead.' };
     const a = S.assignments.find((x) => x.id === sess.assignmentId);
     if (!a || a.published === false) return { ok: false, code: 'not_published', message: 'Your teacher hasn’t published this lab yet.' };
-    const enr = S.enrollments.find((e) => e.studentId === participantId && e.classId === sess.classId);
-    if (enr && enr.periodId !== sess.periodId) return { ok: false, code: 'other_period', message: `This session is for ${periodName(cls.id, sess.periodId)}, but you’re enrolled in ${periodName(cls.id, enr.periodId)}. Ask your teacher for your period’s code.` };
-    if (!enr && cls.joinEnabled === false) return { ok: false, code: 'joining_off', message: `${cls.name} isn’t accepting new students right now. Ask your teacher to turn joining back on.` };
-    let group = studentGroup(sess.classId, sess.periodId, participantId);
-    if (!group && !groupsIn(sess.classId, sess.periodId).length) return { ok: false, code: 'no_group', message: 'This period has no lab groups yet. Ask your teacher to set them up.' };
-    const added = { enrolled: false, grouped: false };
-    if (!enr) {
-      ensureStudentRecord(user);
-      S.enrollments.push({ id: uid(), classId: cls.id, periodId: sess.periodId, studentId: participantId, joinedAt: Date.now(), via: 'live-code' });
-      added.enrolled = true;
-    }
-    if (!group) {
-      ensureStudentRecord(user);
-      group = [...groupsIn(sess.classId, sess.periodId)].sort((x, y) => x.memberIds.length - y.memberIds.length || naturalCmp(x.name, y.name))[0];
-      group.memberIds.push(participantId);
-      added.grouped = true;
-      const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id);
-      if (p) logActivity(p, `${displayName(user)} joined ${group.name} with the live session code`);
-    }
-    return { ok: true, sess, cls, group, ...added };
+    let group = sessionGroupFor(sess, participantId);
+    if (group) return { ok: true, sess, cls, group, guest: !!sessionGuest(sess, participantId), added: false };
+    const groups = groupsIn(sess.classId, sess.periodId);
+    if (!groups.length) return { ok: false, code: 'no_group', message: 'This session has no lab groups yet. Ask your teacher to set them up.' };
+    ensureStudentRecord(user);
+    group = [...groups].sort((x, y) => sessionMemberIds(sess, x).length - sessionMemberIds(sess, y).length || x.name.localeCompare(y.name, undefined, { numeric: true }))[0];
+    sess.guests = [...(sess.guests || []), { studentId: participantId, groupId: group.id, at: Date.now() }];
+    const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id);
+    if (p) logActivity(p, `${displayName(user)} joined ${group.name} as a guest with the live session code`);
+    return { ok: true, sess, cls, group, guest: true, added: true };
   },
   track(sessionId, groupId) { const s = sessionById(sessionId); return s ? classTrack(s, groupId) : null; },
   write(eventId, t, fn) {
@@ -302,7 +283,7 @@ const LabSessionAPI = {
   requestHelp({ eventId, sessionId, groupId, participantId, category, message, aiDrafted = false }) {
     const t = this.track(sessionId, groupId);
     return this.write(eventId, t, () => {
-      const res = Sim.help(t.p, t.sess, category, message);
+      const res = createHelpRequest(t.p, t.sess, category, message);
       res.request.by = participantId; if (aiDrafted) res.request.aiDrafted = true;
       emitEvent('help.requested', { trackKey: t.key, groupId, requestId: res.request.id, updated: res.updated });
       return { status: 'ok', ...res };

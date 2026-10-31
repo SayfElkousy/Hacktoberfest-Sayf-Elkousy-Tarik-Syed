@@ -37,7 +37,7 @@ Set before the app script loads, for example in `index.template.html`:
 </script>
 ```
 
-When `tokenUrl` and `wsUrl` aren't both set, the "Recording service" option shows as **Not configured** and students can use Claude (live AI on sampled photos) or the clearly labeled Simulated connection.
+When `tokenUrl` and `wsUrl` aren't both set, the "Recording service" option shows as **Not configured** and students can use Gemma (live AI on sampled photos).
 
 ## 1. Token request (Labby backend)
 

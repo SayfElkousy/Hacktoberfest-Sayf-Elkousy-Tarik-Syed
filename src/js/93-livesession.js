@@ -7,7 +7,7 @@
 U.live = null;
 const LIVE_PREFS = { ack: false, adapterKind: '', intervalSec: 30, lowBandwidth: false, speak: false, mic: false, deviceId: '' };
 function livePrefs() { const L = U.live; const k = `${L.kind}:${L.id}|${S.currentUserId}`; if (!S.liveState[k]) S.liveState[k] = { ...LIVE_PREFS }; return S.liveState[k]; }
-function defaultAdapterKind() { return RemoteRecordingAdapter.configured() ? 'remote' : AI.available ? 'claude' : 'simulated'; }
+function defaultAdapterKind() { return RemoteRecordingAdapter.configured() ? 'remote' : 'gemma'; }
 
 /* ---------- Model: everything the screen may show, already authorized and filtered ---------- */
 function liveModel() {
@@ -15,14 +15,14 @@ function liveModel() {
   if (L.kind === 'class') {
     const auth = LabSessionAPI.authorize(me_, L.id);
     if (!auth.sess || (!auth.ok && auth.code !== 'not_open')) return { error: auth };
-    const a = auth.a; const v = studentLabView(a, me_);
+    const a = auth.a; const v = studentLabView(a, me_, null, auth.sess);
     if (!v) return { error: { code: 'not_found', message: 'This lab isn’t available to you.' } };
     const t = classTrack(auth.sess, auth.group.id); ensureProgressShape(t.p);
     const sc = sessionContent(auth.sess);
     return { kind: 'class', auth, v, t, sess: auth.sess, title: v.title, sub: `${v.className} · ${v.periodName}`, groupName: auth.group.name, members: v.group.members,
       steps: v.procedure ? v.procedure.steps : [], released: v.procedure ? v.procedure.checkpoints : [], placement: sc.checkpoints.map((cp) => ({ id: cp.id, afterStepId: cp.afterStepId, blocks: cpBlocks(cp) })),
       readOnly: !!auth.readOnly, open: auth.ok, status: auth.code, ack: v.acknowledgment, precautions: v.sections.precautions || [], level: classById(auth.sess.classId).level,
-      versionId: auth.sess.versionId, canHelp: true, backHref: `#s/lab/${a.id}`, trackKey: auth.sess.id, groupId: auth.group.id };
+      versionId: auth.sess.versionId, canHelp: true, backHref: v.guest ? '#s/live' : `#s/lab/${a.id}`, trackKey: auth.sess.id, groupId: auth.group.id };
   }
   const run = runById(L.id); const role = run ? runRole(run, me_) : null;
   if (!run || !atLeast(role, 'contributor')) return { error: { code: 'not_allowed', message: 'You don’t have access to run this experiment.' } };
@@ -114,12 +114,12 @@ const Live = {
     L.camConflict = cam && cam.holderId !== S.currentUserId && Date.now() - cam.beat < 90000 ? cam : null;
     this.saved(); commit();
   },
-  async previewCamera(simulated = false) {
+  async previewCamera() {
     const L = U.live; const prefs = livePrefs();
     L.cam = 'starting'; L.camError = null; commit();
-    const r = simulated ? Media.startSimulated() : await Media.start({ deviceId: prefs.deviceId, audio: prefs.mic });
+    const r = await Media.start({ deviceId: prefs.deviceId, audio: prefs.mic });
     if (!U.live) { Media.stop(); return false; }
-    if (r.ok) { L.cam = 'preview'; L.sim = simulated; if (simulated) prefs.mic = false; }
+    if (r.ok) L.cam = 'preview';
     else { L.cam = 'error'; L.camError = r.code; }
     commit(); return r.ok;
   },
@@ -129,7 +129,7 @@ const Live = {
     if (camera) {
       if (L.camConflict && !force) { L.viewOnly = true; camera = false; }
       else {
-        if (!Media.stream && !(await this.previewCamera(L.sim))) return;
+        if (!Media.stream && !(await this.previewCamera())) return;
         const res = liveAPI(m).setCamera(true, force);
         if (res.status === 'camera_in_use') { L.camConflict = res.holder; Media.stop(); L.cam = 'off'; commit(); return; }
         L.cam = 'on'; L.viewOnly = false; L.camConflict = null;
@@ -145,8 +145,8 @@ const Live = {
   async connectAI(kind) {
     const L = U.live; if (!L) return;
     if (this.adapter) { this.adapter.disconnect(); if (this.unsub) this.unsub(); }
-    const def = ADAPTERS[kind] || ADAPTERS.simulated;
-    if (!def.available()) { L.ai = { state: 'unavailable', detail: kind === 'remote' ? 'The recording service isn’t configured for this Labby deployment.' : 'Live AI isn’t available in this view.' }; commit(); return; }
+    const def = ADAPTERS[kind] || ADAPTERS.gemma;
+    if (!def.available()) { L.ai = { state: 'unavailable', detail: kind === 'remote' ? 'The recording service isn’t configured for this Labby deployment.' : 'Live AI isn’t connected. Open Labby from the student site server.' }; commit(); return; }
     livePrefs().adapterKind = kind;
     this.adapter = def.make(); L.adapterKind = kind; L.aiError = '';
     this.unsub = this.adapter.on((evt) => this.onEvent(evt));
@@ -187,7 +187,7 @@ const Live = {
     if (ev.type === 'suggested_completion') L.suggest = ev.stepId;
     if (ev.type === 'help_recommended') { L.helpSuggest = ev; liveAPI(m).flag('help', ev.helpReason || ev.guidance, ev.stepId); }
     if (ev.type === 'unclear_view') { L.unclear += 1; if (L.unclear >= 3) { liveAPI(m).flag('unclear', 'Camera view has been unclear for several checks in a row.', ev.stepId); L.unclear = 0; } } else if (ev.withImage) L.unclear = 0;
-    if (livePrefs().speak && window.speechSynthesis && ev.guidance) { try { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(ev.guidance.replace(/^\[Simulated[^\]]*\]\s*/, ''))); } catch (e) { /* speech unavailable */ } }
+    if (livePrefs().speak && window.speechSynthesis && ev.guidance) { try { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(ev.guidance)); } catch (e) { /* speech unavailable */ } }
     this.saved(); commit();
   },
   stepChanged() {
@@ -228,8 +228,8 @@ const Live = {
   },
   pauseCam() { const L = U.live; if (!Media.stream) return; Media.stream.getVideoTracks().forEach((t) => { t.enabled = false; }); if (this.sampler) this.sampler.paused = true; if (this.adapter) this.adapter.pause(); L.cam = 'paused'; commit(); },
   resumeCam() { const L = U.live; if (!Media.stream) return; Media.stream.getVideoTracks().forEach((t) => { t.enabled = true; }); if (this.sampler) this.sampler.paused = false; if (this.adapter) this.adapter.resume(); L.cam = 'on'; commit(); },
-  stopCam() { const L = U.live; if (this.sampler) this.sampler.stop(); Media.stop(); if (this.releaseCamera) { this.releaseCamera(); this.releaseCamera = null; } clearInterval(this.hb); L.cam = 'off'; L.sim = false; commit(); },
-  async restartCam(simulated = false) { const L = U.live; L.sim = simulated; if (await this.previewCamera(simulated)) await this.start({ camera: true }); },
+  stopCam() { const L = U.live; if (this.sampler) this.sampler.stop(); Media.stop(); if (this.releaseCamera) { this.releaseCamera(); this.releaseCamera = null; } clearInterval(this.hb); L.cam = 'off'; commit(); },
+  async restartCam() { if (await this.previewCamera()) await this.start({ camera: true }); },
   onTrackEnded() { const L = U.live; if (!L || L.cam === 'off') return; L.cam = 'error'; L.camError = 'missing'; if (this.sampler) this.sampler.stop(); commit(); toast('The camera disconnected. Your progress is saved.', 'alert'); },
   leave() {
     const m = U.live && liveModel(); const back = m && !m.error ? m.backHref : '#s/overview';
@@ -249,7 +249,7 @@ function liveCodeForm() {
   const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
   return html`<form class="card card-pad stack" data-submit="live-code" novalidate style="margin-bottom:22px;max-width:720px">
     <h2>Enter a live session code</h2>
-    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to your group’s session.</p>
+    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to the session. You don’t need to be in the class.</p>
     <div class="row wrap" style="align-items:flex-end">
       ${field({ label: 'Live session code', id: 'lc-code', bind: 'ui.liveCodeDraft.code', value: d.code, cls: 'grow', attrs: 'autocomplete="off" autocapitalize="characters" spellcheck="false" style="font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;max-width:220px"', error: d.error })}
       <button class="btn btn-primary" type="submit">${icon('arrowRight')}Join session</button>
@@ -293,6 +293,8 @@ function liveLobby(m) {
       ${m.precautions.length && m.status !== 'completed' ? html`<div class="panel stack tight"><strong class="row">${icon('alert', 'sm')}Before you start</strong><ul class="ul-plain small">${m.precautions.map((x) => html`<li>${x}</li>`)}</ul></div>` : ''}
       ${m.ack && m.status !== 'completed' ? html`<label class="check" for="live-ack"><input type="checkbox" id="live-ack" data-bind="liveState.${`${L.kind}:${L.id}|${S.currentUserId}`.replace(/\./g, '_')}.ack" data-type="bool"${attr(prefs.ack, 'checked')} data-change="live-ack"><span><strong>Required by your teacher:</strong> ${m.ack}</span></label>` : ''}
       ${L.msg ? html`<div class="err" role="alert">${icon('alert', 'sm')}${L.msg}</div>` : ''}
+      ${m.kind === 'class' && m.status !== 'completed' && StudentSite.studentLink(m.sess.liveCode) ? html`<div class="panel row between wrap"><div class="stack tight"><strong class="row">${icon('eye', 'sm')}Lab assistant</strong><span class="small muted">Step-by-step help that talks you through the lab and checks your work with your webcam. Your progress still reaches your teacher.</span></div>
+        <a class="btn" href="${StudentSite.studentLink(m.sess.liveCode)}" target="_blank" rel="noopener">${icon('arrowRight', 'sm')}Open the lab assistant</a></div>` : ''}
       <div class="row wrap">
         <button class="btn btn-primary btn-lg" data-action="live-enter"${attr(m.status === 'not_open' || offline, 'disabled')}>${icon(m.status === 'completed' ? 'eye' : 'arrowRight')}${m.status === 'completed' ? 'Review session' : m.status === 'paused' ? 'Enter (read only)' : started ? 'Resume session' : 'Enter session'}</button>
         <a class="btn btn-ghost" href="${m.backHref}">Back to lab</a></div>
@@ -300,17 +302,17 @@ function liveLobby(m) {
   </div>`;
 }
 function privacyText(kind, prefs) {
-  if (kind === 'claude') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to the AI assistant through the account of the person viewing this page. Video is never streamed.</li>
+  if (kind === 'gemma') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to Gemma on your teacher’s laptop and nowhere else. Video is never streamed.</li>
     <li><strong>What’s stored:</strong> Labby doesn’t save photos or video. The guidance text is saved with your group’s progress.</li>
     <li><strong>Who can see it:</strong> your group sees the guidance. Your teacher sees step progress, measurements, checkpoint answers and AI flags that ask for teacher help, but not photos.</li></ul>`;
   if (kind === 'remote') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> sampled camera frames and this step’s instructions go to your school’s recording service (${(LABBY_CONFIG.recordingService.wsUrl || '').replace(/^wss?:\/\//, '').split('/')[0] || 'not configured'}).</li><li><strong>What’s stored:</strong> set by that service’s retention policy. Labby doesn’t save video.</li><li><strong>Who can see it:</strong> your teacher sees progress and AI flags, not video.</li></ul>`;
-  return html`<ul class="ul-plain small"><li><strong>Nothing leaves this browser.</strong> The camera preview stays on this device and isn’t analyzed.</li><li>Guidance comes from scripted demo text, labeled “Simulated”.</li><li>Your teacher sees step progress and checkpoint answers as usual.</li></ul>`;
+  return '';
 }
 function cameraBox(L, { compact = false } = {}) {
   const on = Media.stream && ['preview', 'on', 'paused'].includes(L.cam);
   const err = L.cam === 'error' && L.camError ? MEDIA_ERRORS[L.camError] : null;
   return html`<div class="cam-box ${compact ? 'compact' : ''}">
-    ${on ? html`<video id="live-video" data-key="live-video" data-morph-skip autoplay muted playsinline aria-label="${L.sim ? 'Simulated camera feed' : 'Camera preview'}"></video>` : ''}
+    ${on ? html`<video id="live-video" data-key="live-video" data-morph-skip autoplay muted playsinline aria-label="Camera preview"></video>` : ''}
     ${!on ? html`<div class="cam-empty">${err ? html`${icon('alert', 'lg')}<strong>${err.title}</strong><span class="small">${err.text}</span>`
       : L.cam === 'starting' ? html`<span class="spinner"></span><span class="small">Waiting for camera permission…</span>`
         : L.viewOnly ? html`${icon('eye', 'lg')}<strong>Following along</strong><span class="small">${L.camConflict ? `${L.camConflict.holderName}’s device is your group’s camera.` : 'Your group’s camera runs on another device.'}</span>`
@@ -330,18 +332,17 @@ function liveSetup(m) {
         <h3 id="cam-h">Camera</h3>
         ${cameraBox(L)}
         <div class="row wrap">
-          ${!Media.stream ? html`<button class="btn" data-action="live-preview"${attr(L.cam === 'starting', 'disabled')}>${icon('eye', 'sm')}Turn on camera preview</button>
-            <button class="btn btn-demo btn-sm" data-action="live-sim-feed">${icon('zap', 'sm')}Use simulated camera feed (demo)</button>`
+          ${!Media.stream ? html`<button class="btn" data-action="live-preview"${attr(L.cam === 'starting', 'disabled')}>${icon('eye', 'sm')}Turn on camera preview</button>`
           : html`<button class="btn btn-sm btn-ghost" data-action="live-cam-stop">${icon('x', 'sm')}Turn off preview</button>`}
         </div>
-        ${Media.devices.length > 1 && !L.sim ? html`<div class="field"><label for="cam-dev">Camera</label><select class="select sm" id="cam-dev" data-change="live-device">${options(Media.devices.map((d) => [d.id, d.label]), Media.deviceId)}</select></div>` : ''}
-        <label class="check" for="live-mic"><input type="checkbox" id="live-mic" data-change="live-mic-pref"${attr(prefs.mic, 'checked')}${attr(L.sim || kind === 'claude', 'disabled')}><span>Use the microphone <span class="opt">(optional)</span>
-          <span class="hint" style="display:block">${kind === 'claude' ? 'Live AI guidance uses still photos only, so audio isn’t sent.' : kind === 'simulated' ? 'In the demo, audio stays on this device.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
+        ${Media.devices.length > 1 ? html`<div class="field"><label for="cam-dev">Camera</label><select class="select sm" id="cam-dev" data-change="live-device">${options(Media.devices.map((d) => [d.id, d.label]), Media.deviceId)}</select></div>` : ''}
+        <label class="check" for="live-mic"><input type="checkbox" id="live-mic" data-change="live-mic-pref"${attr(prefs.mic, 'checked')}${attr(kind === 'gemma', 'disabled')}><span>Use the microphone <span class="opt">(optional)</span>
+          <span class="hint" style="display:block">${kind === 'gemma' ? 'Live AI guidance uses still photos only, so audio isn’t sent.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
       </section>
       <section class="card card-pad stack" aria-labelledby="ai-h">
         <h3 id="ai-h">AI connection</h3>
         <div class="stack tight" role="radiogroup" aria-label="AI connection">${Object.entries(ADAPTERS).map(([k, d]) => html`<label class="jp-period" for="ad-${k}" style="padding:10px 12px;cursor:pointer"><input type="radio" name="adapter" id="ad-${k}" value="${k}" data-change="live-adapter"${attr(kind === k, 'checked')}${attr(!d.available(), 'disabled')}>
-          <span><strong>${d.label}</strong><span class="hint" style="display:block">${k === 'claude' ? (d.available() ? 'Real AI on sampled still photos.' : 'Not available in this view.') : k === 'remote' ? (d.available() ? 'Your school’s recording system.' : 'Not configured yet. See INTEGRATION.md.') : 'Scripted demo. Never analyzes your camera.'}</span></span></label>`)}</div>
+          <span><strong>${d.label}</strong><span class="hint" style="display:block">${k === 'gemma' ? (d.available() ? 'Gemma on sampled still photos, on the teacher’s laptop.' : 'Not connected.') : d.available() ? 'Your school’s recording system.' : 'Not configured yet. See INTEGRATION.md.'}</span></span></label>`)}</div>
         <div class="form-grid">
           ${selectField({ label: 'Check the camera view', id: 'live-int', bind: `liveState.${`${L.kind}:${L.id}|${S.currentUserId}`.replace(/\./g, '_')}.intervalSec`, value: prefs.intervalSec, opts: [[0, 'Only when I ask'], [15, 'Every 15 seconds'], [30, 'Every 30 seconds'], [60, 'Every minute']] })}
           <div class="field"><span class="label">Bandwidth</span>${checkField({ label: 'Low-bandwidth mode', id: 'live-low', bind: `liveState.${`${L.kind}:${L.id}|${S.currentUserId}`.replace(/\./g, '_')}.lowBandwidth`, checked: prefs.lowBandwidth, hint: 'Smaller, more compressed photos.' })}</div>
@@ -381,7 +382,6 @@ function liveWorkspace(m) {
       <div class="stack" style="min-width:0">
         ${guidancePanel(m)}
         ${progressPanel(m)}
-        ${liveDemoPanel(m)}
       </div>
     </div>
   </div>`;
@@ -389,7 +389,7 @@ function liveWorkspace(m) {
 function indicator(label, value, tone, ico) { return html`<span class="ind tone-${tone}">${icon(ico, 'sm')}<span><span class="xs">${label}</span> <strong>${value}</strong></span></span>`; }
 function cameraPanel(m) {
   const L = U.live; const prefs = livePrefs(); const ai = AI_STATE[L.ai.state] || AI_STATE.idle;
-  const camLabel = L.viewOnly ? 'Teammate’s device' : L.cam === 'on' ? (L.sim ? 'Simulated feed' : 'On') : L.cam === 'paused' ? 'Paused' : L.cam === 'error' ? 'Error' : 'Off';
+  const camLabel = L.viewOnly ? 'Teammate’s device' : L.cam === 'on' ? 'On' : L.cam === 'paused' ? 'Paused' : L.cam === 'error' ? 'Error' : 'Off';
   const adapterName = Live.adapter ? Live.adapter.label : 'none';
   return html`<section class="card" aria-labelledby="cam-panel-h"><div class="card-head"><h3 id="cam-panel-h" class="row">${icon('eye', 'sm')}Camera</h3>
       <div class="row wrap" role="status">${indicator('Camera', camLabel, L.cam === 'on' ? 'ok' : L.cam === 'error' ? 'bad' : 'idle', 'eye')}${indicator('AI', `${ai.label}${Live.adapter ? ` · ${adapterName}` : ''}`, ai.tone, ai.icon)}${indicator('Video recording', 'Not saved', 'idle', 'stopCircle')}</div></div>
@@ -398,9 +398,9 @@ function cameraPanel(m) {
         ${L.cam === 'on' ? html`<button class="btn btn-sm" data-action="live-cam-pause">${icon('pause', 'sm')}Pause</button>` : ''}
         ${L.cam === 'paused' ? html`<button class="btn btn-sm btn-primary" data-action="live-cam-resume">${icon('play', 'sm')}Resume</button>` : ''}
         ${['on', 'paused'].includes(L.cam) ? html`<button class="btn btn-sm" data-action="live-cam-stop">${icon('stopCircle', 'sm')}Stop camera</button>` : ''}
-        ${['off', 'error'].includes(L.cam) && !m.readOnly ? html`<button class="btn btn-sm" data-action="live-cam-start">${icon('play', 'sm')}${L.viewOnly ? 'Use this device as the camera' : 'Start camera'}</button><button class="btn btn-sm btn-demo" data-action="live-cam-sim">${icon('zap', 'sm')}Simulated feed</button>` : ''}
+        ${['off', 'error'].includes(L.cam) && !m.readOnly ? html`<button class="btn btn-sm" data-action="live-cam-start">${icon('play', 'sm')}${L.viewOnly ? 'Use this device as the camera' : 'Start camera'}</button>` : ''}
         ${L.cam === 'on' && Live.adapter && Live.adapter.caps.frames ? html`<button class="btn btn-sm" data-action="live-check-now"${attr(!!m.t.p.atCheckpoint, 'disabled')}>${icon('search', 'sm')}Check my setup now</button>` : ''}
-        ${Media.stream && Media.stream.getAudioTracks().length && !L.sim && Live.adapter && Live.adapter.caps.audio ? html`<button class="btn btn-sm" data-action="live-mic" aria-pressed="${Media.micOn()}">${icon('message', 'sm')}Microphone ${Media.micOn() ? 'on' : 'off'}</button>` : ''}
+        ${Media.stream && Media.stream.getAudioTracks().length && Live.adapter && Live.adapter.caps.audio ? html`<button class="btn btn-sm" data-action="live-mic" aria-pressed="${Media.micOn()}">${icon('message', 'sm')}Microphone ${Media.micOn() ? 'on' : 'off'}</button>` : ''}
       </div>
       ${L.cam === 'on' ? html`<p class="xs muted">${livePrefs().intervalSec > 0 ? `Checks the view every ${prefs.intervalSec} s` : 'Checks only when you ask'}${prefs.lowBandwidth ? ' · low bandwidth' : ''}${L.lastFrameAt ? ` · last photo ${fmtClock(L.lastFrameAt)} (${L.lastFrameKb} KB)` : ''}${Live.sampler && Live.sampler.stats.lastLatencyMs != null ? ` · last check took ${(Live.sampler.stats.lastLatencyMs / 1000).toFixed(1)} s` : ''}. Photos aren’t stored.</p>` : ''}
     </div></section>`;
@@ -482,7 +482,7 @@ function guidancePanel(m) {
   const L = U.live; const p = m.t.p; const prefs = livePrefs();
   const log = (p.guidance || []).slice().reverse(); const latest = log[0];
   const kindLabel = { guidance: 'AI guidance', answer: 'AI answer', unclear_view: 'AI: camera view unclear', suggested_completion: 'AI suggestion', help_recommended: 'AI recommends asking your teacher', observation: 'AI observation' };
-  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag ${g.source === 'simulated' ? 'sim' : 'live'}">${icon(g.source === 'simulated' ? 'zap' : 'sparkles', 'sm')}${g.source === 'simulated' ? 'Simulated' : g.source === 'claude' ? 'Live AI' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
+  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag live">${icon('sparkles', 'sm')}${g.source === 'gemma' ? 'Live AI' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
     ${g.question ? html`<p class="small muted">You asked: “${g.question}”</p>` : ''}
     ${g.observation ? html`<p class="small"><strong>Sees:</strong> ${g.observation}</p>` : ''}${g.inference ? html`<p class="small"><strong>Thinks:</strong> ${g.inference}</p>` : ''}
     <p class="${big ? '' : 'small'}">${g.guidance}</p></div>`;
@@ -492,7 +492,7 @@ function guidancePanel(m) {
     <div class="card-body stack">
       <p class="xs muted">AI suggestions support you; they don’t replace your teacher’s instructions or safety supervision.</p>
       ${!Live.adapter || ['unavailable', 'error', 'disconnected', 'off'].includes(L.ai.state) ? html`<div class="panel stack tight"><span class="small">${L.ai.detail || 'AI guidance is off. Your instructions and progress work without it.'}</span>
-        ${!m.readOnly ? html`<div class="row wrap">${Object.entries(ADAPTERS).filter(([, d]) => d.available()).map(([k, d]) => html`<button class="btn btn-sm ${k === 'simulated' ? 'btn-demo' : ''}" data-action="live-connect" data-kind="${k}">${icon(k === 'simulated' ? 'zap' : 'sparkles', 'sm')}Connect ${d.label}</button>`)}</div>` : ''}</div>` : ''}
+        ${!m.readOnly ? html`<div class="row wrap">${Object.entries(ADAPTERS).filter(([, d]) => d.available()).map(([k, d]) => html`<button class="btn btn-sm" data-action="live-connect" data-kind="${k}">${icon('sparkles', 'sm')}Connect ${d.label}</button>`)}</div>` : ''}</div>` : ''}
       ${L.ai.state === 'reconnecting' ? html`<div class="notice warn">${icon('refresh')}<div>${L.ai.detail || 'Reconnecting'}. Your instructions and progress still work; live guidance is paused.</div></div>` : ''}
       ${L.aiError ? html`<div class="notice warn">${icon('alert')}<div>${L.aiError}</div></div>` : ''}
       ${L.helpSuggest ? html`<div class="notice warn" role="alert">${icon('hand')}<div><strong>AI recommends asking your teacher.</strong> ${L.helpSuggest.helpReason || ''}<div class="row wrap" style="margin-top:6px">${m.canHelp ? html`<button class="btn btn-sm btn-primary" data-action="live-help-ai">${icon('lifebuoy', 'sm')}Review and send help request</button>` : ''}<button class="btn btn-sm btn-ghost" data-action="live-help-ai-dismiss">Dismiss</button></div></div></div>` : ''}
@@ -534,31 +534,10 @@ function helpForm(m, s) {
     ${h.error ? html`<div class="err">${icon('alert', 'sm')}${h.error}</div>` : ''}
     <div class="row wrap"><button class="btn btn-primary" type="submit">${icon('send', 'sm')}Send to teacher</button><button class="btn btn-ghost" type="button" data-action="live-help-cancel">Cancel</button></div></form>`;
 }
-function liveDemoPanel(m) {
-  const sim = Live.adapter && Live.adapter.kind === 'simulated';
-  return html`<details class="demo-panel"${attr(U.liveDemoOpen, 'open')}><summary data-action="live-demo-toggle">${icon('zap')}Simulated events (demo)${icon('chevDown', 'sm')}</summary>
-    ${U.liveDemoOpen ? html`<div class="demo-body"><p class="small">Trigger the events the recording interface would send. ${sim ? '' : 'AI events need the Simulated connection.'}</p>
-      <div class="row wrap">
-        <button class="btn btn-sm btn-demo" data-action="live-sim" data-kind="guidance"${attr(!sim, 'disabled')}>Step guidance</button>
-        <button class="btn btn-sm btn-demo" data-action="live-sim" data-kind="unclear"${attr(!sim, 'disabled')}>Unclear camera view</button>
-        <button class="btn btn-sm btn-demo" data-action="live-sim" data-kind="suggest"${attr(!sim, 'disabled')}>Suggested completion</button>
-        <button class="btn btn-sm btn-demo" data-action="live-sim" data-kind="help"${attr(!sim, 'disabled')}>Teacher-help recommendation</button>
-        <button class="btn btn-sm btn-demo" data-action="live-sim" data-kind="stale"${attr(!sim, 'disabled')}>Late reply from an old step</button>
-        <button class="btn btn-sm btn-demo" data-action="live-sim" data-kind="drop"${attr(!sim, 'disabled')}>AI connection loss</button>
-        <button class="btn btn-sm btn-demo" data-action="live-sim" data-kind="recover"${attr(!sim, 'disabled')}>AI recovery</button>
-      </div>
-      <div class="row wrap">
-        <button class="btn btn-sm btn-demo" data-action="live-sim-dup">Repeat the last step-completed event</button>
-        <button class="btn btn-sm btn-demo" data-action="live-sim-offline">Drop Labby connection</button>
-        ${m.kind === 'class' ? html`<button class="btn btn-sm btn-demo" data-action="live-sim-teammate">A teammate’s device takes the camera</button>` : ''}
-      </div></div>` : ''}</details>`;
-}
-
 /* ---------- Actions ---------- */
 const LIVE_ACTIONS = {
   'live-enter': () => Live.enter(),
-  'live-preview': () => Live.previewCamera(false),
-  'live-sim-feed': () => Live.previewCamera(true),
+  'live-preview': () => Live.previewCamera(),
   'live-start': () => Live.start({ camera: true }),
   'live-no-camera': () => Live.start({ camera: false }),
   'live-follow': () => { U.live.viewOnly = true; Live.start({ camera: false }).then(() => { if (U.live) { U.live.viewOnly = true; commit(); } }); },
@@ -569,7 +548,6 @@ const LIVE_ACTIONS = {
   'live-cam-resume': () => Live.resumeCam(),
   'live-cam-stop': () => { if (U.live.phase === 'setup') { Media.stop(); U.live.cam = 'off'; U.live.sim = false; commit(); } else Live.stopCam(); },
   'live-cam-start': () => Live.restartCam(false),
-  'live-cam-sim': () => Live.restartCam(true),
   'live-check-now': () => Live.checkNow(),
   'live-mic': () => { Media.setMic(!Media.micOn()); commit(); },
   'live-complete': () => Live.completeStep(),
@@ -580,13 +558,8 @@ const LIVE_ACTIONS = {
   'live-help-cancel': () => { U.live.help = null; commit(); },
   'live-help-ai': () => { const g = U.live.helpSuggest; U.live.help = { cat: g.helpCategory || 'Procedure', msg: g.helpReason || g.guidance, ai: true }; commit(); U.focusAfter = '#hf-msg'; },
   'live-help-ai-dismiss': () => { U.live.helpSuggest = null; commit(); },
-  'live-reconnect': () => { const m = liveModel(); if (!m.error && m.t.p.connection === 'lost') { m.t.p.connection = 'online'; logActivity(m.t.p, 'Device reconnected'); } U.live.offline = false; if (Live.adapter && Live.adapter.kind === 'simulated' && Live.adapter.dropped) Live.adapter.demo('recover'); Live.saved(); commit(); toast('Reconnected. Your progress was restored from the saved session, with nothing duplicated.', 'wifi'); },
+  'live-reconnect': () => { const m = liveModel(); if (!m.error && m.t.p.connection === 'lost') { m.t.p.connection = 'online'; logActivity(m.t.p, 'Device reconnected'); } U.live.offline = false; Live.saved(); commit(); toast('Reconnected. Your progress was restored from the saved session, with nothing duplicated.', 'wifi'); },
   'live-fold': (el) => { const f = el.dataset.f; const cur = el.closest('details').open; U.live[f] = !cur; commit(); },
-  'live-demo-toggle': () => { U.liveDemoOpen = !U.liveDemoOpen; commit(); },
-  'live-sim': (el) => { const a = Live.adapter; if (!a || a.kind !== 'simulated') return; if (el.dataset.kind === 'guidance') a.stepGuidance(); else a.demo(el.dataset.kind); },
-  'live-sim-dup': () => { const m = liveModel(); const last = m.t.p.completed[m.t.p.completed.length - 1]; if (!last) { toast('No step has been completed yet.', 'info'); return; } const r = liveAPI(m).completeStep(last.stepId, `step:${m.trackKey}:${last.stepId}:${S.currentUserId}`); commit(); toast(`Repeated event result: ${r.status}. Progress wasn’t changed.`, 'zap'); },
-  'live-sim-offline': () => { const m = liveModel(); m.t.p.connection = 'lost'; m.t.p.activity.push({ at: Date.now(), text: 'Device stopped responding' }); U.live.offline = true; if (Live.adapter && Live.adapter.kind === 'simulated') Live.adapter.demo('drop'); commit(); },
-  'live-sim-teammate': () => { const m = liveModel(); const other = m.t.members.find((x) => x !== S.currentUserId); if (!other) return; m.t.p.camera = { holderId: other, holderName: (studentById(other) || {}).name || 'A teammate', deviceLabel: 'Chromebook', since: Date.now(), beat: Date.now() }; if (U.live.cam !== 'off') { Live.stopCam(); m.t.p.camera = { holderId: other, holderName: (studentById(other) || {}).name || 'A teammate', deviceLabel: 'Chromebook', since: Date.now(), beat: Date.now() }; } U.live.camConflict = m.t.p.camera; U.live.viewOnly = true; commit(); toast(`${m.t.p.camera.holderName}’s device is now the group camera. This device follows along.`, 'users'); },
 };
 const LIVE_CHANGES = {
   'live-ack': () => { if (U.live) { U.live.msg = ''; commit(); } },

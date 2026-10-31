@@ -119,7 +119,7 @@ function rosterTab(cls, total, expected) {
     <div class="chips" role="group" aria-label="Choose a period">${cls.periods.map((p) => html`<button class="chip" aria-pressed="${p.id === pid}" data-action="class-period" data-cid="${cls.id}" data-pid="${p.id}">${p.name}<span class="count">${enrolledCount(cls.id, p.id)}</span></button>`)}</div>
     <div class="grid grid-2" style="align-items:start">
       <section class="card" aria-labelledby="st-h">
-        <div class="card-head"><h2 id="st-h">${per.name} students</h2><button class="btn btn-xs btn-demo" data-action="sim-join" data-cid="${cls.id}" data-pid="${pid}">${icon('zap', 'sm')}Simulate a student joining</button></div>
+        <div class="card-head"><h2 id="st-h">${per.name} students</h2></div>
         <div class="card-body">${students.length ? html`<div class="table-wrap" style="border:0"><table><thead><tr><th>Name</th><th>Lab group</th></tr></thead><tbody>
           ${students.map((s) => { const g = groupOf(s.id); return html`<tr data-key="st-${s.id}"><td>${s.name}</td><td>
             <label class="sr-only" for="sg-${s.id}">Lab group for ${s.name}</label>

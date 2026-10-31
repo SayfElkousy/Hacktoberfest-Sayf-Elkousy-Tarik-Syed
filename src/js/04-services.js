@@ -1,7 +1,6 @@
 /* =====================================================================
-   Services: file reading, procedure import, AI planning (live via
-   Claude when allowed, otherwise a labeled simulation) and demo
-   live-lab events. Each is a seam where a production backend plugs in.
+   Services: file reading, procedure import, AI planning through Gemma,
+   and help requests.
    ===================================================================== */
 
 /* ---------------------------------------------------------------
@@ -272,12 +271,32 @@ function parseProcedureText(text) {
 /* ---------------------------------------------------------------
    3. AI planning
    --------------------------------------------------------------- */
-const AI = { sample: null, available: null, denied: false, busy: false, ctl: null, error: null };
-function initLiveAI() {
-  if (!(window.claude && typeof window.claude.use === 'function')) { AI.available = false; return; }
-  window.claude.use('sample').then((fn) => { AI.sample = fn; AI.available = !!fn; commit(); }).catch(() => { AI.available = false; commit(); });
-}
-const aiMode = () => (S.designer.mode === 'live' && AI.available && !AI.denied ? 'live' : 'simulated');
+const AI = { sample: null, available: null, busy: false, ctl: null, error: null };
+
+/** Live AI is Gemma, running on the student site's server. Availability follows that connection. */
+const GemmaAI = {
+  limits() { return Promise.resolve({ images: true }); },
+  async json(prompt, { signal, images = [] } = {}) {
+    const encoded = await Promise.all(images.map((blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    })));
+    const { url, token } = StudentSite.config();
+    let res;
+    try {
+      res = await fetch(`${url.replace(/\/+$/, '')}/api/dashboard/ai`, {
+        method: 'POST', signal,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, images: encoded }),
+      });
+    } catch (e) { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'unreachable' }; }
+    if (!res.ok) throw { code: res.status === 422 ? 'invalid_json' : 'unreachable' };
+    return res.json();
+  },
+};
+function initLiveAI() { AI.sample = GemmaAI; }
 
 function normalizePlan(raw, fallbackTitle) {
   const p = raw && typeof raw === 'object' ? raw : {};
@@ -374,145 +393,10 @@ async function callLive(kind, question) {
 function liveErrorText(e) {
   switch (e && e.code) {
     case 'cancelled': return 'Stopped. The plan wasn’t changed.';
-    case 'not_granted': case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed':
-      return 'Live AI isn’t allowed for this page, so Labby switched to the simulated assistant. Your plan wasn’t changed.';
-    case 'rate_limited': return 'Too many AI requests right now. Wait a minute and try again, or switch to the simulated assistant.';
-    case 'session_expired': return 'Your session expired. Sign in again to use live AI.';
     case 'invalid_json': case 'empty_completion': return 'The response couldn’t be read as a lab plan. Try again, or ask for a smaller change.';
-    case 'refused': return 'The assistant declined this request. Try rephrasing it.';
     case 'prompt_too_large': return 'The plan is too long to send. Remove some steps or notes and try again.';
-    default: return 'The AI service didn’t respond. Check your connection and try again.';
+    default: return 'Gemma didn’t respond. Check that the student site server and Ollama are running, then try again.';
   }
-}
-
-/* ----- Simulated assistant: fixed sample plans + three follow-up skills ----- */
-function reactionRatePlan() {
-  return {
-    title: 'Temperature and Reaction Rate: Effervescent Tablets', subject: 'Chemistry', level: 'AP / IB',
-    objectives: ['Measure how water temperature changes the time an effervescent tablet takes to react', 'Explain the trend using collision theory', 'Graph reaction time against temperature and describe the relationship'],
-    materials: [
-      M('250 mL beaker', 2, 'beakers', 'reusable', { inventory: '250 mL beaker' }), M('Thermometer', 1, 'thermometers', 'reusable', { inventory: 'Thermometer' }),
-      M('Stopwatch', 1, 'stopwatches', 'reusable'), M('100 mL graduated cylinder', 1, 'cylinders', 'reusable'),
-      M('Hot plate (teacher hot-water station)', 1, 'hot plates', 'reusable', { sharedBy: 4, inventory: 'Hot plate' }),
-      M('Effervescent antacid tablet', 4, 'tablets', 'consumable'), M('Crushed ice', 0.5, 'L', 'consumable'), M('Distilled water', 0.4, 'L', 'consumable'),
-      M('Safety goggles', 1, 'pairs', 'reusable', { per: 'student' }),
-    ],
-    setup: ['Teacher: set up a hot-water station (about 60 °C) and an ice-water station before class.', 'Put two beakers, a thermometer, a stopwatch and a graduated cylinder at each bench.', 'Count 4 tablets per group into labeled cups.'],
-    steps: [
-      ST('Predict the trend', 3, 'As a group, write a one-sentence prediction: how will water temperature change the time it takes a tablet to stop fizzing?', { inputs: [['Prediction', '']] }),
-      ST('Ice-water trial', 7, 'Measure 100 mL of ice water, leaving the ice behind. Record the temperature. Drop in one tablet, start the stopwatch, and stop it when the fizzing ends.', { inputs: [['Water temperature', '°C'], ['Reaction time', 's']], materials: ['Thermometer', 'Stopwatch'] }),
-      ST('Room-temperature trial', 6, 'Repeat with 100 mL of room-temperature water. Record the temperature and reaction time.', { inputs: [['Water temperature', '°C'], ['Reaction time', 's']] }),
-      ST('Warm-water trial (about 40 °C)', 7, 'Mix hot and room-temperature water to reach about 40 °C. Measure 100 mL, record the exact temperature, and time the reaction.', { inputs: [['Water temperature', '°C'], ['Reaction time', 's']] }),
-      ST('Hot-water trial (about 60 °C)', 7, 'Collect 100 mL of hot water from the teacher station, carrying the beaker with both hands. Record the temperature and time the reaction.', { inputs: [['Water temperature', '°C'], ['Reaction time', 's']], checkpoint: true }),
-      ST('Graph and explain', 8, 'Plot reaction time (y) against temperature (x). Write two sentences explaining the trend using collision theory.', { inputs: [['Trend explanation', '']] }),
-    ],
-    cleanup: ['Pour all solutions down the sink with running water.', 'Rinse and dry beakers and cylinders; return thermometers to the case.', 'Teacher switches off the hot-water station and lets it cool.'],
-    precautions: ['Hot water at about 60 °C can scald. Students carry beakers with both hands and never touch the hot plate.', 'Tablets fizz and can splash: keep faces back from the beaker and wear goggles.', 'Wipe up spills right away so the floor stays dry.'],
-    assumptions: ['Hot water comes from a teacher-run station, so students never handle hot plates.', 'Each group runs one trial per temperature.'],
-    questions: ['Do you want a repeat trial at each temperature? It adds about 12 minutes and 4 more tablets per group.'],
-  };
-}
-function contentAsPlan(c) { const p = clone(c); p.assumptions = p.assumptions || []; p.questions = p.questions || []; return p; }
-const SIM_TEMPLATES = [
-  { match: /specific heat|calorim|heat capacity/i, build: () => contentAsPlan(specificHeatContent()) },
-  { match: /catalase|enzyme|peroxide|denatur/i, build: () => contentAsPlan(catalaseContent()) },
-  { match: /titrat|vinegar|acid.?base|neutrali/i, build: () => contentAsPlan(titrationContent()) },
-  { match: /rate|antacid|effervesc|alka|tablet|collision|fizz/i, build: reactionRatePlan },
-];
-const WORD_NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
-const toNum = (s) => (/^\d+$/.test(s) ? +s : WORD_NUM[String(s).toLowerCase()] || null);
-
-function simGenerate(d) {
-  const text = `${d.form.topic} ${d.form.experiment} ${d.form.objectives}`;
-  const t = SIM_TEMPLATES.find((x) => x.match.test(text));
-  if (!t) {
-    return { error: 'The simulated assistant only has sample plans for four experiments: reaction rate and temperature (effervescent tablets), specific heat of metals, catalase enzyme activity, and vinegar titration. Describe one of those, or switch to Live AI to plan anything else.' };
-  }
-  const plan = normalizeContent(t.build());
-  plan.subject = d.form.subject || plan.subject; plan.level = d.form.level || plan.level;
-  const r = computeResources(plan, d);
-  const parts = [`I drafted a ${plan.steps.length}-step plan for ${r.periods.length ? r.periods.map((p) => p.short).join(' and ') : 'your class'}.`];
-  if (r.periods.length) parts.push(`With groups of ${d.logistics.groupSize}, that’s ${r.periods.map((p) => `${p.groups} in ${p.short}`).join(' and ')} (${r.totalGroups} in all).`);
-  parts.push(`It takes ${r.time.total} of your ${r.time.available} minutes.`);
-  const bad = r.issues.filter((i) => i.sev === 'bad').length;
-  if (bad) parts.push(`${plural(bad, 'problem')} need${bad === 1 ? 's' : ''} your decision before this plan can work. They’re listed at the top of the plan.`);
-  return { plan, reply: parts.join(' '), changes: [] };
-}
-
-function simRevise(d, question) {
-  const q = question.toLowerCase();
-  const plan = clone(d.plan);
-  const changes = []; const replyParts = [];
-  let groupSize = null, labMinutes = null; const inventoryUpdates = [];
-  const sizeM = /(\d+|two|three|four|five|six)\s+(?:students?\s+)?(?:per|in each|in a|a|each)\s+group|groups?\s+of\s+(\d+|two|three|four|five|six)/i.exec(q);
-  const onlyM = /only\s+(?:have\s+|got\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+([a-z][a-z -]*?)(?=[.?!,]|\s+(?:so|and|how|for|in|but|to)\b|$)/i.exec(q);
-  const timeM = /(\d{2,3})\s*(?:-?\s*min(?:ute)?s?)\b/i.exec(q);
-
-  if (sizeM) {
-    groupSize = toNum(sizeM[1] || sizeM[2]);
-    if (groupSize) { changes.push(`Target group size changed from ${d.logistics.groupSize} to ${groupSize} students.`); replyParts.push(`I set groups to ${groupSize} students.`); }
-  } else if (onlyM) {
-    const n = toNum(onlyM[1]); const noun = onlyM[2].trim();
-    const inv = d.inventory.find((i) => normName(i.name).some((w) => normName(noun).includes(w)));
-    const mat = plan.materials.find((m) => normName(m.name).some((w) => normName(noun).includes(w)));
-    if (!inv && !mat) {
-      replyParts.push(`I couldn’t find “${noun}” in your inventory or in the plan, so I didn’t change anything. Add it to Available resources first.`);
-    } else {
-      if (inv && Number(inv.qty) !== n) { inventoryUpdates.push({ name: inv.name, quantity: n }); changes.push(`${inv.name} in your inventory set to ${n}.`); }
-      if (mat && mat.kind === 'reusable' && mat.per !== 'student') {
-        const periods = designerPeriods(d);
-        const maxStudents = Math.max(0, ...periods.map((p) => p.students));
-        const peakGroups = Math.max(0, ...periods.map((p) => p.groups));
-        const perGroup = mat.qtyPerGroup || 1;
-        if (Math.ceil(peakGroups / (mat.sharedBy || 1)) * perGroup <= n) {
-          replyParts.push(`${n} is enough: the busiest period needs ${Math.ceil(peakGroups / (mat.sharedBy || 1)) * perGroup} at once with the current groups.`);
-        } else {
-          const neededSize = Math.ceil(maxStudents / Math.floor(n / perGroup));
-          if (neededSize <= 4) {
-            groupSize = neededSize;
-            changes.push(`Group size raised from ${d.logistics.groupSize} to ${neededSize} so every group has its own ${mat.name.toLowerCase()}.`);
-            replyParts.push(`With ${n} ${noun}, the simplest fix is groups of ${neededSize}: the largest period then has ${Math.ceil(maxStudents / neededSize)} groups. The other option is keeping smaller groups and pairing them on one ${mat.name.toLowerCase()}, staggering their readings, which adds a few minutes per trial.`);
-          } else {
-            const share = Math.ceil(peakGroups / Math.floor(n / perGroup));
-            mat.sharedBy = share;
-            changes.push(`${mat.name}: now shared by ${share} groups. Groups take turns reading it.`);
-            replyParts.push(`Even groups of 4 would need more than ${n}, so I set ${share} groups to share each one. Expect each trial to run a few minutes longer.`);
-          }
-        }
-      } else if (mat && mat.kind === 'consumable') {
-        replyParts.push(`I updated the count. Check the materials table for whether ${n} covers every group.`);
-      }
-    }
-  } else if (timeM || /\bfinish\b|\btime\b|\bfit\b/.test(q)) {
-    labMinutes = timeM ? +timeM[1] : Number(d.logistics.labMinutes);
-    if (timeM && labMinutes !== Number(d.logistics.labMinutes)) changes.push(`Lab time changed from ${d.logistics.labMinutes} to ${labMinutes} minutes.`);
-    const fixed = (Number(d.logistics.setupMinutes) || 0) + (Number(d.logistics.cleanupMinutes) || 0);
-    let total = fixed + stepsMinutes(plan);
-    if (total <= labMinutes) {
-      replyParts.push(`Yes. The plan takes ${total} minutes including setup and cleanup, leaving ${labMinutes - total} to spare.`);
-    } else {
-      const trials = plan.steps.filter((s) => /trial/i.test(s.title));
-      if (trials.length && !plan.steps.some((s) => /pre-measured/i.test(s.instructions))) {
-        trials.forEach((s) => { s.minutes = Math.max(1, (s.minutes || 0) - 1); s.instructions = s.instructions.replace(/\b(Measure|Collect) 100 mL\b/, 'Take the pre-measured 100 mL').replace(/Repeat with 100 mL\b/, 'Repeat with the pre-measured 100 mL'); });
-        changes.push(`Water for each trial is now pre-measured at the stations: ${plural(trials.length, 'trial')} each shortened by 1 minute.`);
-        plan.setup.push('Pre-measure 100 mL of water per trial into labeled cups at each temperature station.');
-        changes.push('Added a setup task: pre-measure water at each station.');
-        total = fixed + stepsMinutes(plan);
-      }
-      if (total > labMinutes) {
-        const room = plan.steps.findIndex((s) => /room-temperature trial/i.test(s.title));
-        if (room !== -1) { const [r] = plan.steps.splice(room, 1); changes.push(`Removed “${r.title}” (${r.minutes} min). Three temperatures still show the trend.`); total = fixed + stepsMinutes(plan); }
-      }
-      if (total <= labMinutes) replyParts.push(`It fits now: ${total} of ${labMinutes} minutes. Check that the changes below still meet your objectives.`);
-      else {
-        const longest = [...plan.steps].sort((a, b) => (b.minutes || 0) - (a.minutes || 0)).slice(0, 2).map((s) => `“${s.title}” (${s.minutes} min)`).join(' and ');
-        replyParts.push(`I can’t fit this into ${labMinutes} minutes without cutting steps you may need: it still takes ${total}. The longest steps are ${longest}. Could one of them move to homework or a second day?`);
-      }
-    }
-  } else {
-    return { reply: 'The simulated assistant can only handle three kinds of follow-up: time limits (“Can we finish this in 45 minutes?”), equipment counts (“We only have six thermometers”), and group size (“Adjust this for four students per group”). Switch to Live AI for other questions.', changes: [], plan: null };
-  }
-  return { plan, reply: replyParts.join(' ') || 'Updated the plan.', changes, groupSize, labMinutes, inventoryUpdates };
 }
 
 /** App-side comparison of two plans so the teacher sees exactly what moved. */
@@ -537,46 +421,11 @@ function revisedSteps(oldPlan, newPlan) {
 }
 
 /* ---------------------------------------------------------------
-   4. Live lab events. In production these arrive from students’
-      devices over a realtime channel; here demo controls create them.
+   4. Live lab events, which arrive from the student site.
    --------------------------------------------------------------- */
 function logActivity(p, text, at = Date.now()) { p.activity.push({ at, text }); p.lastActivityAt = at; }
-const Sim = {
-  start(p, sess) { if (!p.stepStartedAt && !p.finishedAt) { const now = Date.now(); p.stepStartedAt = now; logActivity(p, `Started step 1: ${sessionContent(sess).steps[0].title}`, now); } },
-  record(p, sess) {
-    const c = sessionContent(sess); const step = c.steps[p.stepIndex];
-    if (p.atCheckpoint || p.finishedAt) return false;
-    const missing = step.inputs.filter((i) => !p.observations.some((o) => o.stepIndex === p.stepIndex && o.label === i.label));
-    if (!missing.length) return false;
-    const inp = missing[0]; const now = Date.now();
-    const value = fakeReading(inp.label, inp.unit);
-    p.observations.push({ id: uid(), stepIndex: p.stepIndex, stepId: step.id, label: inp.label, unit: inp.unit, value, at: now, simulated: true });
-    logActivity(p, `Recorded ${inp.label}: ${value}${inp.unit ? ' ' + inp.unit : ''}`, now);
-    return true;
-  },
-  /** Demo control: the group finishes its current step (or the checkpoint it is waiting at). */
-  advance(p, sess) {
-    const c = sessionContent(sess); ensureProgressShape(p);
-    if (p.finishedAt) return 'finished';
-    if (p.connection === 'lost') return 'offline';
-    const t = classTrack(sess, p.groupId);
-    if (p.atCheckpoint) {
-      const cp = checkpointById(c, p.atCheckpoint); const st = Engine.gateState(t, cp);
-      if (!st.responded || !st.correctOk) { Engine.simulateResponses(t, cp); const r = Engine.evaluate(t); return r === 'advanced' ? 'advanced' : r === 'approval' ? 'requested' : 'responded'; }
-      if (st.approval === 'pending') return 'checkpoint';
-      if (st.approval === 'returned') { Engine.simulateResponses(t, cp); Engine.evaluate(t); return 'requested'; }
-      Engine.evaluate(t); return 'advanced';
-    }
-    if (!p.stepStartedAt) { this.start(p, sess); return 'started'; }
-    while (this.record(p, sess)) { /* fill this step’s readings first */ }
-    const res = Engine.completeStep(t, c.steps[p.stepIndex].id, { by: null, source: 'teacher-demo' });
-    if (res.checkpoint && p.atCheckpoint) { const st = Engine.gateState(t, checkpointById(c, p.atCheckpoint)); return st.approval === 'pending' ? 'requested' : 'released'; }
-    return 'advanced';
-  },
-  complete(p, sess) { const c = sessionContent(sess); return Engine.completeStep(classTrack(sess, p.groupId), c.steps[p.stepIndex].id, { source: 'teacher-demo' }); },
-  toggleConnection(p) { const now = Date.now(); p.connection = p.connection === 'lost' ? 'online' : 'lost'; p.activity.push({ at: now, text: p.connection === 'lost' ? 'Device stopped responding' : 'Device reconnected' }); if (p.connection === 'online') p.lastActivityAt = now; },
-  /** One open request per group and category: a repeat updates the existing request instead. */
-  help(p, sess, category, message) {
+/** One open request per group and category: a repeat updates the existing request instead. */
+function createHelpRequest(p, sess, category, message) {
     const now = Date.now();
     const existing = S.help.find((h) => h.sessionId === sess.id && h.groupId === p.groupId && h.category === category && h.status !== 'resolved');
     if (existing) {
@@ -590,11 +439,4 @@ const Sim = {
     S.help.push(req);
     logActivity(p, `Asked for help (${category})`, now);
     return { updated: false, request: req };
-  },
-};
-const SAMPLE_HELP = {
-  Equipment: ['Our hot plate isn’t heating up even though the light is on.', 'The thermometer display keeps flickering.', 'We dropped the tongs in the bath. Can we get another pair?'],
-  Procedure: ['Do we close the lid before or after we swirl?', 'Can we start the next step while the metal is still heating?', 'Our water bath stopped boiling. Should we wait?'],
-  Measurement: ['Our temperature only went up 1 °C. Is that normal?', 'Do we use 100 mL or 100 g of water in the equation?', 'The balance shows two different masses for the same sample.'],
-  Other: ['One of our group members is absent. Can we still finish?', 'Can we get extra time to finish the calculation?'],
-};
+}

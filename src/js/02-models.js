@@ -7,7 +7,7 @@
 
 /**
  * @typedef {'teacher'|'student'|'independent'} Role
- * @typedef {{id:string,name:string,email:string,role:Role,school?:string,createdAt:number,demo?:boolean}} User
+ * @typedef {{id:string,name:string,email:string,role:Role,school?:string,createdAt:number}} User
  * @typedef {{id:string,name:string,expected:number}} Period              // expected = planned enrollment
  * @typedef {{id:string,teacherId:string,name:string,subject:string,level:string,description?:string,
  *            joinCode:string,codeUpdatedAt:number,createdAt:number,periods:Period[]}} ClassRecord

@@ -35,7 +35,7 @@ function liveView() {
       <div class="session-head">
         <div class="stack tight" style="min-width:0"><div class="row wrap">${sessionPill(sess.status)}<span class="tag">${icon('lock', 'sm')}Version ${v.number}</span></div>
           <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>
-          ${sess.status === 'active' || sess.status === 'paused' ? html`<div class="row wrap">${liveCodeChip(sess)}${joinCodeChip(cls)}</div><span class="xs muted">Students enter the live session code on their Live Session page to go straight to this lab.</span>`
+          ${sess.status === 'active' || sess.status === 'paused' ? html`<div class="row wrap">${liveCodeChip(sess)}${joinCodeChip(cls)}</div><span class="xs muted">Anyone with the live session code can join this session, even if they aren’t in the class. They enter it on their Live Session page or on the student assistant site.</span>`
             : sess.status === 'scheduled' ? html`${joinCodeChip(cls)}<span class="xs muted">A live session code for students appears when you start the session.</span>` : ''}</div>
         ${sess.status === 'scheduled' ? html`<div class="stack tight" style="align-items:flex-end"><span class="small muted">Scheduled ${sess.scheduledFor === todayISO() ? 'for today' : 'for ' + fmtDate(new Date(sess.scheduledFor + 'T12:00').getTime())} · ${plannedMinutes(c)} min planned</span>
           ${groupsAvailable ? html`<button class="btn btn-primary" data-action="session-start" data-sid="${sess.id}">${icon('play')}Start session</button>`
@@ -66,7 +66,6 @@ function liveView() {
     </div>
     ${list.length ? html`<div class="groups-grid">${list.map((p) => groupTile(p, sess, c, statuses.get(p.id), now))}</div>`
       : html`<div class="card">${emptyState({ ico: 'search', title: 'No groups with this status', text: 'Choose another filter to see the rest of the class.', compact: true, actions: html`<button class="btn btn-sm" data-action="live-filter" data-f="all">Show all groups</button>` })}</div>`}`}
-    ${(sess.status === 'active' || sess.status === 'paused') && !StudentSite.connected() ? demoPanel(sess, ps) : ''}
     ${openHelp ? html`<p class="small"><a href="#help">${icon('lifebuoy', 'sm')} ${plural(openHelp, 'open help request')} for this session in the Help Queue</a></p>` : ''}
   </div>
   ${U.drawer ? groupDrawer(U.drawer) : ''}`;
@@ -103,7 +102,7 @@ function groupTile(p, sess, c, gs, now) {
   const cls = { behind: 'st-behind', waiting: 'st-waiting', lost: 'st-lost' }[gs.key] || '';
   return html`<article class="group-tile ${cls} ${U.drawer === p.id ? 'sel' : ''}" data-action="group-open" data-pid="${p.id}" data-key="gt-${p.id}">
     <div class="gt-head"><div class="stack tight" style="min-width:0"><button class="link-btn gt-name" style="text-decoration:none;color:var(--ink)" data-action="group-open" data-pid="${p.id}" aria-label="Open details for ${g.name}">${g.name}</button>
-      <span class="gt-members">${memberNames(g).map((n) => n.split(' ')[0]).join(', ')}</span></div>${groupPill(gs.key)}</div>
+      <span class="gt-members">${sessionMemberNames(sess, g).map((n) => n.split(' ')[0]).join(', ')}</span></div>${groupPill(gs.key)}</div>
     <div class="gt-step">${p.finishedAt ? html`<strong>Finished</strong> at ${fmtClock(p.finishedAt)}` : html`<span class="muted">Step ${p.stepIndex + 1} of ${c.steps.length}</span> · <strong>${step.title}</strong>`}</div>
     <div class="stack tight">${segs(c.steps.length, done, p.stepIndex, !!p.finishedAt, `${done.size} of ${c.steps.length} steps complete`)}<span class="xs muted num">${done.size}/${c.steps.length} steps complete</span></div>
     <div class="gt-meta">
@@ -128,7 +127,7 @@ function groupDrawer(pid) {
   const open = help.filter((h) => h.status !== 'resolved');
   return html`<div class="drawer-scrim" data-action="drawer-close" data-key="drawer-scrim"></div>
   <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title" data-key="drawer">
-    <div class="drawer-head"><div class="stack tight grow"><h2 id="dr-title">${g.name}</h2><span class="small muted">${memberNames(g).join(', ')}</span><div>${groupPill(gs.key)}</div></div>
+    <div class="drawer-head"><div class="stack tight grow"><h2 id="dr-title">${g.name}</h2><span class="small muted">${sessionMemberNames(sess, g, true).join(', ')}</span><div>${groupPill(gs.key)}</div></div>
       <button class="btn btn-ghost btn-icon" data-action="drawer-close" aria-label="Close group details">${icon('x')}</button></div>
     <div class="drawer-body">
       <section class="drawer-section"><h3>${p.finishedAt ? 'Finished' : 'Current step'}</h3>
@@ -153,32 +152,6 @@ function groupDrawer(pid) {
   </aside>`;
 }
 
-function demoPanel(sess, ps) {
-  const gid = ps.some((p) => p.id === S.ui.demoGroupId) ? S.ui.demoGroupId : (ps[0] && ps[0].id);
-  const p = ps.find((x) => x.id === gid);
-  const cat = S.ui.demoCat || 'Equipment';
-  const msg = S.ui.demoMsg ?? SAMPLE_HELP[cat][0];
-  return html`<details class="demo-panel"${attr(U.demoOpen, 'open')} data-key="demo-panel"><summary data-action="demo-toggle" aria-expanded="${!!U.demoOpen}">${icon('zap')}Demo controls: simulate student events${icon('chevDown', 'sm')}</summary>
-    ${U.demoOpen ? html`<div class="demo-body">
-      <p class="small">In the real app these events come from students’ devices. Here you trigger them to try the teacher workflow.${sess.status === 'paused' ? ' The session is paused; events still arrive.' : ''}</p>
-      <div class="row wrap"><label class="small strong" for="demo-g">Group</label>
-        <select class="select sm" id="demo-g" style="width:auto" data-bind="ui.demoGroupId" data-type="str">${options([...ps].sort((a, b) => naturalCmp(groupById(a.groupId).name, groupById(b.groupId).name)).map((x) => [x.id, groupById(x.groupId).name]), gid)}</select>
-        <button class="btn btn-sm btn-demo" data-action="demo-advance" data-pid="${gid}">${icon('arrowRight', 'sm')}Complete current step</button>
-        <button class="btn btn-sm btn-demo" data-action="demo-record" data-pid="${gid}">${icon('ruler', 'sm')}Record a measurement</button>
-        <button class="btn btn-sm btn-demo" data-action="demo-conn" data-pid="${gid}">${icon(p && p.connection === 'lost' ? 'wifi' : 'wifiOff', 'sm')}${p && p.connection === 'lost' ? 'Reconnect device' : 'Drop connection'}</button>
-      </div>
-      <form class="stack tight" data-submit="demo-help">
-        <div class="row wrap"><label class="small strong" for="demo-cat">Help request</label>
-          <select class="select sm" id="demo-cat" style="width:auto" data-change="demo-cat">${options(Object.keys(HELP_CATEGORIES), cat)}</select></div>
-        <label class="sr-only" for="demo-msg">Student message</label>
-        <textarea class="textarea" id="demo-msg" rows="2" style="min-height:48px" data-bind="ui.demoMsg" data-type="str">${msg}</textarea>
-        <div class="row wrap"><button class="btn btn-sm btn-demo" type="submit">${icon('lifebuoy', 'sm')}Submit help request as this group</button>
-          <span class="xs muted">A second request in the same category updates the open one instead of adding a duplicate.</span></div>
-      </form>
-      ${checkField({ label: 'Play random student events every few seconds', id: 'demo-auto', bind: 'demo.autoplay', checked: S.demo.autoplay })}
-    </div>` : ''}</details>`;
-}
-
 function liveCodeModal() {
   const sess = sessionById(U.modal.sid); if (!sess || !ensureLiveCode(sess)) return '';
   const c = sessionContent(sess);
@@ -189,7 +162,8 @@ function liveCodeModal() {
         <li><strong>1.</strong> Open Labby and go to <strong>Live Session</strong>.</li>
         <li><strong>2.</strong> Type the code <span class="mono">${sess.liveCode}</span> and choose <strong>Join session</strong>.</li>
         <li><strong>3.</strong> Enter the session with your group and start step 1.</li></ol>
-      <p class="xs muted">Students who aren’t in ${periodName(sess.classId, sess.periodId)} or a lab group yet are added to the period and the smallest group. The code stops working when the session ends.</p></div>`,
+      ${StudentSite.studentAddress() ? html`<div class="panel stack tight" style="max-width:440px;margin:0 auto;text-align:left"><strong class="row">${icon('eye', 'sm')}Lab assistant with camera and voice</strong><span class="small">Or open <span class="mono">${StudentSite.studentAddress()}</span> and enter the same code.</span></div>` : ''}
+      <p class="xs muted">Anyone with this code can join, even if they aren’t in the class. Students without a group here join the smallest lab group as guests for this session only. The code also works on the student assistant site, and it stops working when the session ends.</p></div>`,
     foot: html`<button class="btn" data-action="modal-close">Close</button><button class="btn btn-primary" data-action="copy-live-code" data-sid="${sess.id}">${icon('copy')}Copy code</button>` });
 }
 function liveCodeRegenModal() {
@@ -205,22 +179,6 @@ function endSessionModal() {
     <ul class="ul-plain">${unfinished ? html`<li>${plural(unfinished, 'group')} haven’t finished. Their progress and measurements are kept.</li>` : html`<li>All groups have finished.</li>`}
       ${open ? html`<li>${plural(open, 'help request')} still open. They stay in the Help Queue.</li>` : ''}<li>Students can’t record anything after the session ends.</li>${sess.liveCode ? html`<li>Live session code <span class="mono">${sess.liveCode}</span> stops working.</li>` : ''}</ul>`,
   foot: html`<button class="btn" data-action="modal-close">Keep running</button><button class="btn btn-danger solid" data-action="session-end" data-sid="${sess.id}">${icon('stopCircle')}End session</button>` });
-}
-
-/* Autoplay: random events across online groups in active sessions. */
-function autoplayTick() {
-  const sessions = mySessions().filter((s) => s.status === 'active');
-  if (!sessions.length) return;
-  const sess = sessions[Math.floor(Math.random() * sessions.length)];
-  const ps = progressFor(sess.id).filter((p) => !p.finishedAt);
-  if (!ps.length) return;
-  const p = ps[Math.floor(Math.random() * ps.length)]; const g = groupById(p.groupId);
-  const r = Math.random();
-  if (p.connection === 'lost') { if (r < 0.5) { Sim.toggleConnection(p); toast(`${g.name} reconnected.`, 'wifi'); } return; }
-  if (r < 0.55) { const res = Sim.advance(p, sess); if (res === 'requested') toast(`${g.name} is waiting for your checkpoint approval.`, 'clipboard'); }
-  else if (r < 0.75) Sim.record(p, sess);
-  else if (r < 0.88 && !openHelpForGroup(sess.id, p.groupId).length) { const cats = Object.keys(SAMPLE_HELP); const cat = cats[Math.floor(Math.random() * cats.length)]; Sim.help(p, sess, cat, SAMPLE_HELP[cat][Math.floor(Math.random() * SAMPLE_HELP[cat].length)]); toast(`${g.name} asked for help (${cat}).`, 'lifebuoy'); }
-  else if (r < 0.92) { Sim.toggleConnection(p); }
 }
 
 /** Checkpoint status for a group: response, approval pending, or returned. */

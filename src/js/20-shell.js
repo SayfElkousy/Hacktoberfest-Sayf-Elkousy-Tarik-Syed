@@ -1,22 +1,6 @@
 /* =====================================================================
-   App shell: demo band, sidebar, top bar, profile menu, toasts.
+   App shell: sidebar, top bar, profile menu, toasts.
    ===================================================================== */
-function demoBand() {
-  const user = me();
-  const current = user ? (user.demo ? user.id : 'own') : 'out';
-  const demoUsers = S.users.filter((u) => u.demo);
-  const roleLabel = (u) => (u.role === 'independent' ? (u.title || 'Independent') : cap(u.role));
-  return html`<div class="demo-band" data-key="demo-band"><div class="demo-band-inner">
-    <span class="demo-tag">${icon('zap', 'sm')}Demo mode</span>
-    <span class="demo-text long">Sign-in is simulated and data stays in this browser. Simulated AI, file reading and live student events are labeled where they appear.</span><span class="demo-text short">Simulated sign-in. Data stays in this browser.</span>
-    <span class="demo-switch"><label for="demo-role">Demo role switcher</label>
-      <select id="demo-role" data-change="demo-role">
-        ${current === 'own' ? html`<option value="own" selected>${user.name} (your account)</option>` : ''}
-        ${options([...demoUsers.map((u) => [u.id, `${roleLabel(u)} · ${u.name}`]), ['out', 'Signed out (see sign-up)']], current)}
-      </select></span>
-    <button class="btn btn-xs btn-demo" data-action="demo-reset-ask">${icon('refresh', 'sm')}Reset demo data</button>
-  </div></div>`;
-}
 
 const NAV = [
   ['overview', 'Overview', 'grid'], ['classes', 'Classes', 'users'], ['designer', 'Lab Designer', 'sparkles'],
@@ -77,7 +61,7 @@ function topbar(title, ctx = '', ws = 'teacher') {
 }
 
 function teacherShell(route, title, body, ctx = '') {
-  return html`${demoBand()}<div class="app ws-teacher">
+  return html`<div class="app ws-teacher">
     ${sidebar(route)}
     <div class="main">${topbar(title, ctx)}<main class="content" id="main" tabindex="-1" data-key="main-${route.name}">${body}</main></div>
   </div>`;
@@ -94,7 +78,7 @@ function placeholderView(role) {
   const items = isStudent
     ? [['key', 'Join a class', 'Enter the teacher’s class code, then pick your period.'], ['flask', 'Assigned labs', 'See labs your teacher assigned, with materials and safety notes.'], ['listOrdered', 'Step-by-step guidance', 'Work through each step, record measurements, and ask for teacher checks.'], ['lifebuoy', 'Ask for help', 'Send a question to your teacher’s help queue without leaving your bench.']]
     : [['sparkles', 'Plan an experiment', 'Use the AI assistant to plan with the equipment you have.'], ['book', 'Personal lab library', 'Save procedures and reuse them.'], ['listOrdered', 'Guided runs', 'Follow your own procedure step by step and log results.'], ['bars', 'Results', 'Keep measurements and observations in one place.']];
-  return html`${demoBand()}<main class="placeholder-wrap" id="main" tabindex="-1">
+  return html`<main class="placeholder-wrap" id="main" tabindex="-1">
     <div class="row between wrap">
       <a class="brand" href="#${role}" style="padding:0"><span class="brand-mark">${BRAND_MARK}</span><span class="brand-name">Labby</span></a>
       <div class="row"><span class="avatar">${initials(user.name)}</span><div><div class="strong small">${user.name}</div><div class="xs muted">${isStudent ? 'Student' : 'Independent'} account</div></div>
@@ -106,7 +90,6 @@ function placeholderView(role) {
       <p class="muted" style="max-width:62ch">You’re signed in with a${isStudent ? ' student' : 'n independent'} account, so Labby sent you here. This page is a placeholder: the route and layout are ready, and the full ${isStudent ? 'student' : 'independent'} experience will be designed in the next phase.</p>
       <ul class="plan-list">${items.map(([ico, t, d]) => html`<li>${icon(ico)}<div><div class="strong">${t}</div><div class="small muted">${d}</div></div></li>`)}</ul>
     </div>
-    <p class="small muted">Want to see the finished part of the prototype? Use the demo role switcher above and choose Teacher.</p>
   </main>`;
 }
 
@@ -150,7 +133,7 @@ function wsSidebar(ws, route) {
   </nav>${U.navOpen ? html`<div class="scrim" data-action="nav-close" data-key="nav-scrim"></div>` : ''}`;
 }
 function wsShell(ws, route, title, body, ctx = '') {
-  return html`${demoBand()}<div class="app ws-${ws}">
+  return html`<div class="app ws-${ws}">
     ${wsSidebar(ws, route)}
     <div class="main">${topbar(title, ctx, ws)}<main class="content" id="main" tabindex="-1" data-key="main-${route.name}">${body}</main></div>
   </div>`;

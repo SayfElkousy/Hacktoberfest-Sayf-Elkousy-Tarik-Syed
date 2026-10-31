@@ -64,7 +64,7 @@ function interestFields(d, prefix, bindBase) {
 }
 function onboardingView() {
   const d = onboardDraft(); const nErr = Object.keys(d.errors).length;
-  return html`${demoBand()}<main class="placeholder-wrap" id="main" tabindex="-1" style="max-width:760px">
+  return html`<main class="placeholder-wrap" id="main" tabindex="-1" style="max-width:760px">
     <div class="auth-brand"><span class="brand-mark">${BRAND_MARK}</span><span class="brand-name">Labby</span></div>
     <div class="stack tight"><span class="eyebrow">Step ${d.step} of 2</span><h1 id="page-title" tabindex="-1">${d.step === 1 ? 'Set up your student profile' : 'A little more about you'}</h1>
       <p class="muted">${d.step === 1 ? 'Your teachers use this to recognize you. You can change it any time in Profile & Settings.' : 'Everything on this page is optional, and none of it is needed to join a class.'}</p></div>
@@ -197,7 +197,14 @@ function confirmJoin() {
 
 /* ---------- Lab cards and pages ---------- */
 function studentLabsFor(uid, classFilter = '') {
-  return studentAssignments(uid).filter((x) => !classFilter || x.e.id === classFilter).map((x) => ({ ...x, view: studentLabView(x.a, uid) })).filter((x) => x.view);
+  const mine = studentAssignments(uid).filter((x) => !classFilter || x.e.id === classFilter).map((x) => ({ ...x, view: studentLabView(x.a, uid) })).filter((x) => x.view);
+  if (classFilter) return mine;
+  // Sessions joined as a guest with a live session code, for classes the student isn't in.
+  const guest = S.sessions.filter((s) => s.status !== 'completed' && sessionGuest(s, uid) && !mine.some((x) => x.view.sessionId === s.id)).map((s) => {
+    const a = S.assignments.find((x) => x.id === s.assignmentId); const view = a ? studentLabView(a, uid, null, s) : null;
+    return view ? { a, e: null, sess: s, view } : null;
+  }).filter(Boolean);
+  return [...mine, ...guest];
 }
 const studentPill = (k) => pill(STUDENT_LAB_STATUS[k]);
 function sessionLine(v) {
@@ -214,7 +221,7 @@ function labCard(x) {
     ${v.description ? html`<p class="small">${v.description}</p>` : ''}
     <div class="row wrap small" style="gap:6px 14px"><span>${icon('calendar', 'sm')} ${fmtSchedule({ scheduledFor: v.scheduledFor, scheduledTime: v.scheduledTime })}</span><span>${icon('clock', 'sm')} About ${v.durationMin} min</span></div>
     ${prep && prep.length ? html`<div class="next-lab"><span class="eyebrow">Prepare</span><span class="small">${prep[0]}${prep.length > 1 ? ` (+${prep.length - 1} more)` : ''}</span></div>` : ''}
-    <span class="xs muted">${sessionLine(v)}</span>
+    <span class="xs muted">${sessionLine(v)}${v.guest ? ' · Joined with a live session code' : ''}</span>
     <div class="row wrap"><a class="btn btn-sm" href="#s/lab/${v.assignmentId}">View lab</a>
       ${v.status === 'ready' || v.status === 'inprogress' ? html`<a class="btn btn-sm btn-primary" href="#s/live/${v.sessionId}">${icon('activity', 'sm')}${v.status === 'inprogress' ? 'Resume' : 'Enter'} Live Session</a>` : ''}</div>
   </article>`;
@@ -229,7 +236,7 @@ function studentOverview() {
   const u = me(); const enr = studentEnrollments(u.id);
   const intro = html`<div class="page-intro"><div class="stack tight"><p class="eyebrow">${fmtDateLong(Date.now())}</p><h2 style="font-size:1.45rem">${greeting()}, ${displayName(u)}.</h2></div>
     <div class="row wrap"><a class="btn btn-primary" href="#s/live">${icon('activity')}Join Live Session</a><a class="btn" href="#s/join">${icon('key')}Join a class</a></div></div>`;
-  if (!enr.length) return html`${intro}<div class="card">${emptyState({ ico: 'key', title: 'Join your first class', text: 'Ask your teacher for the class code or join link. Once you join, your labs show up here.', actions: html`<a class="btn btn-primary" href="#s/join">${icon('key')}Join a class</a>` })}</div>`;
+  if (!enr.length && !studentLabsFor(u.id).length) return html`${intro}<div class="card">${emptyState({ ico: 'key', title: 'Join your first class', text: 'Ask your teacher for the class code or join link. Once you join, your labs show up here.', actions: html`<a class="btn btn-primary" href="#s/join">${icon('key')}Join a class</a>` })}</div>`;
   const labs = studentLabsFor(u.id, S.ui.sClass);
   const live = labs.filter((x) => x.view.status === 'ready' || x.view.status === 'inprogress');
   const upcoming = labs.filter((x) => x.view.status === 'upcoming' || x.view.status === 'prepare').sort((a, b) => scheduledAt(a.a) - scheduledAt(b.a));

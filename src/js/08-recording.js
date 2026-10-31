@@ -6,10 +6,8 @@
    implementations ship here:
      - RemoteRecordingAdapter: the teammate's recording service over a
        WebSocket. Used only when window.LABBY_CONFIG names its URLs.
-     - ClaudeGuidanceAdapter: real guidance from Claude on sampled still
-       frames, through the page's `sample` capability (the viewer's own
-       Claude account; no API key in the browser).
-     - SimulatedAdapter: a clearly labeled demo that never analyzes video.
+     - GemmaGuidanceAdapter: real guidance from Gemma on sampled still
+       frames, through the student site's server.
 
    Adapter contract (all methods safe to call repeatedly):
      connect(ctx)            -> Promise; emits {type:'status'}
@@ -61,23 +59,7 @@ const Media = {
       return { ok: true };
     } catch (e) { return { ok: false, code: classifyMediaError(e), detail: e && e.message }; }
   },
-  /** A drawn stand-in feed for demos where no camera is available. Clearly labeled on the image itself. */
-  startSimulated() {
-    this.stop();
-    const cv = document.createElement('canvas'); cv.width = 640; cv.height = 360; const g = cv.getContext('2d'); let t = 0;
-    const draw = () => {
-      t += 1; g.fillStyle = '#c9b48f'; g.fillRect(0, 0, 640, 360); g.fillStyle = '#b29a72'; g.fillRect(0, 250, 640, 110);
-      g.fillStyle = 'rgba(220,235,245,0.9)'; g.fillRect(230, 120, 120, 150); g.fillStyle = '#7fb4d8'; g.fillRect(232, 175 + Math.sin(t / 6) * 2, 116, 93);
-      g.fillStyle = '#eee'; g.fillRect(400, 150, 90, 120); g.fillStyle = '#ddd'; g.fillRect(395, 140, 100, 14);
-      g.fillStyle = '#c33'; g.fillRect(442, 60, 6, 95); g.fillStyle = '#333'; g.fillRect(150, 230, 60, 30);
-      g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(0, 0, 640, 30); g.fillStyle = '#fff'; g.font = 'bold 16px sans-serif';
-      g.fillText(`SIMULATED CAMERA FEED · ${new Date().toLocaleTimeString()}`, 12, 21);
-    };
-    draw(); this.simTimer = setInterval(draw, 125);
-    this.stream = cv.captureStream ? cv.captureStream(8) : null; this.source = 'simulated'; this.deviceLabel = 'Simulated feed'; this.hasMic = false;
-    return { ok: !!this.stream, code: this.stream ? null : 'unsupported' };
-  },
-  stop() { if (this.stream) this.stream.getTracks().forEach((tr) => tr.stop()); this.stream = null; this.source = null; clearInterval(this.simTimer); this.simTimer = null; },
+  stop() { if (this.stream) this.stream.getTracks().forEach((tr) => tr.stop()); this.stream = null; this.source = null; },
   async listDevices() {
     try { const all = await navigator.mediaDevices.enumerateDevices(); this.devices = all.filter((d) => d.kind === 'videoinput').map((d, i) => ({ id: d.deviceId, label: d.label || `Camera ${i + 1}` })); this.hasMic = all.some((d) => d.kind === 'audioinput'); }
     catch (e) { this.devices = []; }
@@ -156,7 +138,7 @@ class RecordingAdapter {
   setState(state, detail = '') { this.state = state; this.emit({ type: 'status', state, detail }); }
 }
 
-/* ---------- Claude (live AI on sampled frames) ---------- */
+/* ---------- Gemma (live AI on sampled frames) ---------- */
 function guidancePrompt(ctx, { question = '', hasImage = false, capturedAt = Date.now() } = {}) {
   const s = ctx.step || {};
   const rec = (ctx.recorded || []).map((r) => `${r.label}: ${r.value}${r.unit ? ' ' + r.unit : ''}`).join('; ');
@@ -184,13 +166,13 @@ ${recent ? `Your recent guidance (don’t repeat it):\n${recent}\n` : ''}${quest
 Reply with only one JSON object in this shape:
 {"viewClear": true, "observation": "what is literally visible that matters for this step, or empty", "inference": "what you think it means, or empty", "guidance": "one or two short sentences to the student", "suggestedAction": "none | show_clearer_view | confirm_step | pause_and_get_teacher", "stepMayBeComplete": false, "teacherHelpRecommended": false, "helpCategory": "Equipment | Procedure | Measurement | Other", "helpReason": "short reason, or empty"}`;
 }
-class ClaudeGuidanceAdapter extends RecordingAdapter {
-  constructor() { super(); this.kind = 'claude'; this.label = 'Live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
+class GemmaGuidanceAdapter extends RecordingAdapter {
+  constructor() { super(); this.kind = 'gemma'; this.label = 'Live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
   get caps() { return { frames: this.images, audio: false, lowBandwidth: true }; }
   async connect(ctx) {
     this.ctx = ctx; this.setState('connecting');
-    const s = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('sample').catch(() => null) : null;
-    if (!s) { this.setState('unavailable', 'Live AI isn’t available in this view.'); throw { code: 'unavailable' }; }
+    const s = AI.available ? AI.sample : null;
+    if (!s) { this.setState('unavailable', 'Live AI isn’t connected. Open Labby from the student site server.'); throw { code: 'unavailable' }; }
     this.sample = s;
     try { const lim = await s.limits(); this.images = !!(lim && lim.images); } catch (e) { this.images = false; }
     this.setState('connected', this.images ? '' : 'Camera images can’t be sent from this view, so the AI answers typed questions only.');
@@ -202,15 +184,12 @@ class ClaudeGuidanceAdapter extends RecordingAdapter {
     const withImage = !!(blob && this.images);
     try {
       const raw = await this.sample.json(guidancePrompt(this.ctx, { question, hasImage: withImage, capturedAt: meta.capturedAt }), { signal: ctl.signal, modelTier: 'quick', cache: false, ...(withImage ? { images: [blob] } : {}) });
-      const ev = validateGuidance(raw, { ...meta, question, withImage }, 'claude');
+      const ev = validateGuidance(raw, { ...meta, question, withImage }, 'gemma');
       this.emit(ev ? { type: 'guidance', event: ev } : { type: 'error', message: 'The AI’s reply couldn’t be read, so it was ignored.' });
     } catch (e) {
       const code = e && e.code;
       if (code === 'cancelled') return;
-      if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) this.setState('unavailable', 'Live AI isn’t allowed for this page.');
-      else if (code === 'rate_limited') this.emit({ type: 'rate_limited', message: 'Too many AI requests. Labby will check less often.' });
-      else if (code === 'images_unavailable' || code === 'image_rejected') { this.images = false; this.emit({ type: 'error', message: 'This view can’t send camera images, so only typed questions work.' }); }
-      else this.emit({ type: 'error', message: 'The AI didn’t respond. Your progress is saved, so try again in a moment.' });
+      this.emit({ type: 'error', message: 'The AI didn’t respond. Your progress is saved, so try again in a moment.' });
     } finally { if (this.ctl === ctl) this.ctl = null; }
   }
   analyzeFrame(frame, meta) { if (this.paused || !this.images) return Promise.resolve(); return this.request({ ...meta, capturedAt: frame.capturedAt }, { blob: frame.blob }); }
@@ -219,30 +198,6 @@ class ClaudeGuidanceAdapter extends RecordingAdapter {
   pause() { this.paused = true; this.cancel(); this.setState('paused'); }
   resume() { this.paused = false; this.setState('connected'); }
   disconnect() { this.cancel(); this.setState('disconnected'); this.listeners.clear(); }
-}
-
-/* ---------- Simulated connection (demo only; never analyzes video) ---------- */
-class SimulatedAdapter extends RecordingAdapter {
-  constructor() { super(); this.kind = 'simulated'; this.label = 'Simulated AI connection'; this.dropped = false; this.timers = []; }
-  get caps() { return { frames: true, audio: true, lowBandwidth: true }; }
-  later(fn, ms) { this.timers.push(setTimeout(fn, ms)); }
-  async connect(ctx) { this.ctx = ctx; this.setState('connecting'); await new Promise((r) => setTimeout(r, 500)); this.setState('connected'); this.stepGuidance(); }
-  send(raw, meta = {}) { const m = { ...this.ctx.meta(), seq: this.ctx.nextSeq(), requestId: `sim_${uid(6)}`, ...meta }; const ev = validateGuidance(raw, m, 'simulated'); if (ev) this.emit({ type: 'guidance', event: ev }); }
-  stepGuidance() { const s = this.ctx.step; if (!s || this.dropped) return; const first = String(s.instructions || '').split(/(?<=\.)\s/)[0]; this.later(() => this.send({ guidance: `[Simulated] Step ${s.number}, ${s.title}: ${first}` }), 400); }
-  analyzeFrame() { return Promise.resolve(); }
-  ask(question) { this.later(() => this.send({ guidance: '[Simulated] This demo connection doesn’t read questions or images. With the recording service or live AI connected, the answer would come from your current step.' }, { question, withImage: false }), 500); return Promise.resolve(); }
-  setStep(ctx) { this.ctx = ctx; this.timers.forEach(clearTimeout); this.timers = []; this.stepGuidance(); }
-  pause() { this.setState('paused'); } resume() { this.setState('connected'); }
-  disconnect() { this.timers.forEach(clearTimeout); this.setState('disconnected'); this.listeners.clear(); }
-  demo(kind) {
-    const img = { withImage: true };
-    if (kind === 'unclear') this.send({ viewClear: false, suggestedAction: 'show_clearer_view', observation: '[Simulated] Most of the frame is bench surface; the equipment is cut off at the top edge.', guidance: '[Simulated] Tilt the camera up so the cups and thermometer are fully in view.' }, img);
-    if (kind === 'suggest') this.send({ stepMayBeComplete: true, suggestedAction: 'confirm_step', observation: '[Simulated] The thermometer is through the lid and a reading is visible.', inference: '[Simulated] This step may be finished.', guidance: '[Simulated] If you’ve recorded your reading, mark the step complete yourself.' }, img);
-    if (kind === 'help') this.send({ teacherHelpRecommended: true, suggestedAction: 'pause_and_get_teacher', helpCategory: 'Equipment', helpReason: 'Liquid appears to be on the bench next to the hot plate cord.', observation: '[Simulated] There is liquid on the bench next to the hot plate cord.', guidance: '[Simulated] Pause and ask your teacher before you continue.' }, img);
-    if (kind === 'stale') this.send({ guidance: '[Simulated] This reply belongs to an earlier step and should be ignored.' }, { stepId: 'step_from_before', seq: 0 });
-    if (kind === 'drop') { this.dropped = true; this.setState('reconnecting', 'Simulated network interruption'); }
-    if (kind === 'recover') { this.dropped = false; this.setState('connected', 'Reconnected'); this.stepGuidance(); }
-  }
 }
 
 /* ---------- The teammate’s recording service (WebSocket, see INTEGRATION.md) ---------- */
@@ -288,7 +243,6 @@ class RemoteRecordingAdapter extends RecordingAdapter {
   disconnect() { this.closing = true; this.inflight.clear(); try { this.send({ type: 'bye' }); if (this.ws) this.ws.close(); } catch (e) { /* closed */ } this.setState('disconnected'); this.listeners.clear(); }
 }
 const ADAPTERS = {
-  claude: { label: 'Live AI', make: () => new ClaudeGuidanceAdapter(), available: () => AI.available !== false },
+  gemma: { label: 'Live AI', make: () => new GemmaGuidanceAdapter(), available: () => AI.available === true },
   remote: { label: 'Recording service', make: () => new RemoteRecordingAdapter(), available: () => RemoteRecordingAdapter.configured() },
-  simulated: { label: 'Simulated (demo)', make: () => new SimulatedAdapter(), available: () => true },
 };

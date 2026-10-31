@@ -85,29 +85,15 @@ function designerInputs(d) {
     ${fold('logistics', 'Class logistics', 'users', logisticsBody, d)}
   </div>
   <div class="composer">
-    <div class="row between wrap"><span class="small muted">Assistant: ${aiMode() === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated')}</span>
+    <div class="row between wrap"><span class="small muted">Assistant: <span class="tag live">${icon('sparkles', 'sm')}Live AI</span></span>
       <button class="btn btn-ai" data-action="designer-generate"${attr(AI.busy, 'disabled')}>${AI.busy ? html`<span class="spinner"></span>Working…` : html`${icon('sparkles')}${d.plan ? 'Generate new plan' : 'Generate plan'}`}</button></div>
     ${d.plan ? html`<span class="hint">Generating again replaces the current draft. To change it instead, use Revise with AI.</span>` : ''}
   </div>`;
 }
 
-function aiModeSwitch() {
-  const avail = AI.available; const mode = aiMode();
-  return html`<div class="stack tight">
-    <div class="chips" role="radiogroup" aria-label="Assistant mode">
-      <button class="chip" role="radio" aria-checked="${mode === 'live'}" aria-pressed="${mode === 'live'}" data-action="ai-mode" data-mode="live"${attr(!avail || AI.denied, 'disabled')}>${icon('sparkles', 'sm')}Live AI</button>
-      <button class="chip" role="radio" aria-checked="${mode === 'simulated'}" aria-pressed="${mode === 'simulated'}" data-action="ai-mode" data-mode="simulated">${icon('zap', 'sm')}Simulated</button>
-    </div>
-    <span class="hint">${avail === null ? 'Checking whether live AI is available here…'
-      : AI.denied ? 'Live AI was declined for this page, so the simulated assistant is answering.'
-      : !avail ? 'Live AI isn’t available in this view. The simulated assistant knows four sample experiments and three kinds of follow-up.'
-      : mode === 'live' ? 'The AI answers using your account. You’ll be asked to allow it the first time.' : 'The simulated assistant knows four sample experiments and three kinds of follow-up.'}</span>
-  </div>`;
-}
-
 function designerAssistant(d) {
   return html`<div class="designer-scroll" style="flex:1">
-    ${aiModeSwitch()}
+    <span class="hint">${AI.available ? 'Live AI runs on Gemma on this laptop, so your plans stay here.' : AI.available === null ? 'Connecting to Gemma…' : 'Live AI isn’t connected. Start the student site server, then open Labby at localhost:8080/labby.'}</span>
     <div class="chat" aria-live="polite">
       ${d.chat.length ? d.chat.map(chatMessage) : html`<div class="msg assistant"><span>Fill in the plan inputs and choose <strong>Generate plan</strong>. Then ask me to adjust timing, groups or equipment here.</span></div>`}
     </div>
@@ -123,11 +109,11 @@ function designerAssistant(d) {
 
 function chatMessage(m) {
   if (m.role === 'user') return html`<div class="msg user" data-key="m-${m.id}">${m.text}</div>`;
-  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated assistant')}</div>
+  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta"><span class="tag live">${icon('sparkles', 'sm')}Live AI</span></div>
     <div class="row"><span class="spinner"></span><span>${m.source === 'live' ? 'The AI is working on it. This usually takes 20–60 seconds.' : 'Drafting a sample plan…'}</span></div>
     ${m.source === 'live' ? html`<button class="btn btn-xs" style="align-self:flex-start" data-action="ai-stop">${icon('stopCircle', 'sm')}Stop</button>` : ''}</div>`;
   return html`<div class="msg assistant ${m.error ? 'error' : ''}" data-key="m-${m.id}">
-    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : m.source === 'simulated' ? simTag('Simulated assistant') : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
+    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
     <span style="white-space:pre-wrap">${m.text}</span>
     ${(m.changes && m.changes.length) || (m.check && m.check.length) ? html`<div class="changes"><strong class="small">What changed</strong><ul>
       ${(m.changes || []).map((c) => html`<li>${c}</li>`)}${(m.check || []).map((c) => html`<li><span class="muted">Labby’s check:</span> ${c}</li>`)}</ul></div>` : ''}
@@ -147,7 +133,7 @@ function planPreview(d) {
   return html`<section class="card" aria-labelledby="plan-title" aria-busy="${AI.busy}">
     <div class="card-head" style="align-items:flex-start">
       <div class="stack tight" style="min-width:0;flex:1 1 300px">
-        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by AI</span>` : meta.source === 'simulated' ? simTag('Simulated plan') : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
+        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by AI</span>` : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
         <h2 id="plan-title" style="font-size:1.35rem">${plan.title}</h2>
       </div>
     </div>
@@ -244,25 +230,19 @@ async function designerGenerate() {
   const d = S.designer;
   if (AI.busy) return;
   if (!designerValidate()) { d.tab = 'inputs'; U.focusAfter = '#dz-errors'; commit(); return; }
-  const mode = aiMode();
+  const mode = 'live';
   d.tab = 'assistant'; AI.busy = true;
   pushMsg({ role: 'user', text: 'Generate a plan from my inputs.' });
   const pending = pushMsg({ role: 'assistant', source: mode, pending: true });
   commit();
   try {
-    let res;
-    if (mode === 'live') res = await callLive('generate');
-    else { await sleep(900); res = simGenerate(d); }
+    const res = await callLive('generate');
     d.chat = d.chat.filter((m) => m.id !== pending.id);
-    if (res.error) pushMsg({ role: 'assistant', source: 'simulated', text: res.error, error: true });
-    else {
-      d.plan = res.plan; d.planMeta = { source: mode, at: Date.now() }; d.revised = []; d.editing = false; d.labId = null;
+    d.plan = res.plan; d.planMeta = { source: mode, at: Date.now() }; d.revised = []; d.editing = false; d.labId = null;
       const r = computeResources(d.plan, d);
       pushMsg({ role: 'assistant', source: mode, text: res.reply, check: r.issues.length ? [`${plural(r.issues.length, 'item')} flagged for your decision.`] : [] });
-    }
   } catch (e) {
     d.chat = d.chat.filter((m) => m.id !== pending.id);
-    if (e && ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(e.code)) AI.denied = true;
     pushMsg({ role: 'assistant', source: 'live', text: liveErrorText(e), error: e && e.code !== 'cancelled' });
   } finally { AI.busy = false; AI.ctl = null; commit(); }
 }
@@ -271,18 +251,17 @@ async function designerAsk(question) {
   const d = S.designer;
   question = String(question || '').trim();
   if (!question || !d.plan || AI.busy) return;
-  const mode = aiMode();
+  const mode = 'live';
   d.draftMsg = ''; d.tab = 'assistant'; AI.busy = true;
   pushMsg({ role: 'user', text: question });
   const pending = pushMsg({ role: 'assistant', source: mode, pending: true });
   commit();
   try {
-    const res = mode === 'live' ? await callLive('revise', question) : (await sleep(700), simRevise(d, question));
+    const res = await callLive('revise', question);
     d.chat = d.chat.filter((m) => m.id !== pending.id);
     proposeRevision(res, mode);
   } catch (e) {
     d.chat = d.chat.filter((m) => m.id !== pending.id);
-    if (e && ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(e.code)) AI.denied = true;
     pushMsg({ role: 'assistant', source: 'live', text: liveErrorText(e), error: e && e.code !== 'cancelled' });
   } finally { AI.busy = false; AI.ctl = null; commit(); }
 }

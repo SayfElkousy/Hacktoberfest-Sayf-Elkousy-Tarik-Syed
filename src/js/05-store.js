@@ -1,11 +1,11 @@
 /* =====================================================================
-   State: S is the persisted demo database + UI preferences; U holds
+   State: S is the persisted database + UI preferences; U holds
    transient UI state (open menus, toasts, modals) that is never saved.
    ===================================================================== */
 let S = null;
 const U = { modal: null, menu: false, navOpen: false, drawer: null, toasts: [], hqOpen: {}, dropOver: false, importBusy: false, route: null, lastRouteKey: null, focusAfter: null, storageWarned: false };
 
-/** Shift every "...At" timestamp forward so a returning visitor finds the demo where they left it. */
+/** Shift every "...At" timestamp forward so a running session picks up where it left off. */
 function shiftTimes(obj, delta) {
   if (Array.isArray(obj)) { obj.forEach((v) => shiftTimes(v, delta)); return; }
   if (!obj || typeof obj !== 'object') return;
@@ -19,23 +19,23 @@ function loadState() {
   const saved = Store.load();
   if (saved && saved.version === 2 && Array.isArray(saved.users)) {
     S = saved;
-    const away = Date.now() - (S.demo.lastSeen || Date.now());
+    const away = Date.now() - (S.lastSeen || Date.now());
     if (away > 10 * MIN) {
       // Live sessions pause while nobody is watching: move their clocks forward by the time away.
       const running = new Set(S.sessions.filter((s) => s.status === 'active' || s.status === 'paused').map((s) => s.id));
       shiftTimes({ sessions: S.sessions.filter((s) => running.has(s.id)), progress: S.progress.filter((p) => running.has(p.sessionId)), help: S.help.filter((h) => running.has(h.sessionId)) }, away);
     }
   } else {
-    S = makeSeed(Date.now());
+    S = makeEmptyState();
   }
   S.sessions.forEach(ensureLiveCode); // sessions saved before live codes existed
-  S.demo.lastSeen = Date.now();
+  S.lastSeen = Date.now();
 }
 let saveTimer = null, renderQueued = false;
 function commit() {
   if (!renderQueued) { renderQueued = true; requestAnimationFrame(() => { renderQueued = false; render(); }); }
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => { S.demo.lastSeen = Date.now(); Store.save(S); if (!Store.ok && !U.storageWarned) { U.storageWarned = true; toast('This browser is blocking storage, so demo changes will reset when you reload.', 'alert'); } }, 250);
+  saveTimer = setTimeout(() => { S.lastSeen = Date.now(); Store.save(S); if (!Store.ok && !U.storageWarned) { U.storageWarned = true; toast('This browser is blocking storage, so changes will reset when you reload.', 'alert'); } }, 250);
 }
 function toast(text, ico = 'check') {
   const id = uid();
@@ -45,16 +45,6 @@ function toast(text, ico = 'check') {
   commit();
 }
 function go(hash) { if (location.hash !== '#' + hash) location.hash = hash; else { U.route = parseRoute(); commit(); } }
-function resetDemo() {
-  Store.clear();
-  S = makeSeed(Date.now());
-  S.sessions.forEach(ensureLiveCode);
-  U.modal = null; U.drawer = null; U.menu = false;
-  commit();
-  go(homeFor());
-  toast('Demo data reset. The Period 4 lab is mid-session again.');
-}
-
 /* ---------- Routing ----------
    Teacher routes keep their phase-1 names; student routes start with s/,
    research routes with r/, and #join/CODE[/PERIOD] is a class invitation. */

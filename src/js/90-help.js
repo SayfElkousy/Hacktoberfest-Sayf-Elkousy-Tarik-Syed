@@ -30,7 +30,6 @@ function helpView() {
         : html`<div class="card">${emptyState({ ico: 'lifebuoy', title: 'No one is waiting', text: scope === 'all' ? 'When students ask for help in any of your classes, their requests line up here in the order they arrive.' : 'Requests from this session will line up here in the order they arrive.', compact: true })}</div>`)
       : (resolved.length ? html`<ol class="hq" style="list-style:none;margin:0;padding:0" aria-label="Resolved requests, most recent first">${resolved.map((h) => helpItem(h, null))}</ol>`
         : html`<div class="card">${emptyState({ ico: 'checkCircle', title: 'Nothing resolved yet', text: 'Resolved requests move here so the queue only shows who still needs you.', compact: true })}</div>`)}
-    ${scope === 'session' && live && !StudentSite.connected() ? demoPanel(sess, progressFor(sess.id)) : ''}
   </div>`;
 }
 
@@ -60,7 +59,7 @@ function helpItem(h, pos) {
     </div>
     ${expanded ? html`<div class="hq-detail">
       <div class="stack tight"><span class="eyebrow">Step ${h.stepIndex + 1} instructions</span><span class="small">${step ? step.instructions : 'Step not found.'}</span>
-        <span class="eyebrow" style="margin-top:8px">Group</span><span class="small">${memberNames(g).join(', ')}</span>
+        <span class="eyebrow" style="margin-top:8px">Group</span><span class="small">${sessionMemberNames(sess, g, true).join(', ')}</span>
         ${sess.status !== 'scheduled' ? html`<button class="link-btn small" style="align-self:flex-start" data-action="help-open-group" data-hid="${h.id}">Open ${groupLabel(g)} in Live Progress</button>` : ''}</div>
       <div class="stack tight"><span class="eyebrow">History</span><ul class="timeline">${h.log.map((l) => html`<li><span class="xs muted mono">${fmtClock(l.at)}</span><span class="small">${l.text}</span></li>`)}</ul></div>
     </div>` : ''}
@@ -82,17 +81,5 @@ function settingsView() {
         ${selectField({ label: 'Highlight help requests waiting longer than', id: 'st-wait', bind: 'settings.longWaitMinutes', value: S.settings.longWaitMinutes, opts: [2, 3, 5, 8, 10].map((n) => [n, `${n} minutes`]), hint: 'Highlighting never changes queue order.' })}
       </div></section>
     ${StudentSite.card()}
-    <section class="card card-pad stack" aria-labelledby="dm-h" style="border-style:dashed"><div class="row"><span class="demo-tag">${icon('zap', 'sm')}Demo</span><h2 id="dm-h">About this prototype</h2></div>
-      <ul class="ul-plain small">
-        <li><strong>Sign-in</strong> is simulated. Accounts and data are saved only in this browser.</li>
-        <li><strong>Lab Designer</strong> uses live AI responses when this page is allowed to; otherwise a labeled simulated assistant answers.</li>
-        <li><strong>File import</strong> really reads PDF (text-based), DOCX and TXT files in your browser. Structuring the text is rule-based.</li>
-        <li><strong>Live student events</strong> come from real student devices when the student site is connected above. Otherwise they come from the demo controls on Live Progress.</li>
-      </ul>
-      <div><button class="btn btn-danger" data-action="demo-reset-ask">${icon('refresh')}Reset demo data</button></div></section>
   </div>`;
-}
-function resetModal() {
-  return modalShell({ title: 'Reset demo data?', body: html`<p>This replaces everything in this browser with the original sample classes, labs and live session. Accounts you created here will be removed.</p>`,
-    foot: html`<button class="btn" data-action="modal-close">Cancel</button><button class="btn btn-danger solid" data-action="demo-reset">${icon('refresh')}Reset demo</button>` });
 }

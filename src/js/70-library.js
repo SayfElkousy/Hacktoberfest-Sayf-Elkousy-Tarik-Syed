@@ -79,13 +79,12 @@ function importView() {
           ${Formats.docx === 'ok' ? html`<span class="pill tone-ok">${icon('check')}Word (.docx)</span>` : html`<span class="pill tone-bad">${icon('x')}.docx not supported in this browser</span>`}
           <span class="pill tone-ok">${icon('check')}Plain text (.txt)</span>
           <span class="pill tone-idle">${icon('x')}Not yet: scanned PDFs, photos, .doc</span></div>
-        <p class="hint">Up to 15 MB. Text is read in your browser; nothing is uploaded in this demo.</p>
+        <p class="hint">Up to 15 MB. Text is read in your browser; nothing is uploaded.</p>
       </section>
       <section class="card card-pad stack" aria-labelledby="paste-h">
         <h2 id="paste-h">Paste the procedure</h2>
         ${textareaField({ label: 'Procedure text', id: 'imp-paste', bind: 'ui.pasteText', value: S.ui.pasteText || '', rows: 6, placeholder: 'Paste from a document, website or email. Headings like Materials, Procedure and Safety help Labby sort it.' })}
-        <div class="row wrap"><button class="btn" data-action="import-paste"${attr(!(S.ui.pasteText || '').trim(), 'disabled')}>${icon('arrowRight')}Import pasted text</button>
-          <button class="btn btn-demo btn-sm" data-action="import-sample">${icon('zap', 'sm')}Use a sample procedure</button></div>
+        <div class="row wrap"><button class="btn" data-action="import-paste"${attr(!(S.ui.pasteText || '').trim(), 'disabled')}>${icon('arrowRight')}Import pasted text</button></div>
       </section>
     </div>
     <aside class="card card-pad stack" aria-labelledby="manual-h">
@@ -105,7 +104,7 @@ function importReview(d) {
   const errs = d.readyErrors || [];
   return html`<div class="stack loose">
     <div class="page-intro" style="margin:0"><div class="stack tight"><span class="eyebrow">Import review</span><h2>${d.file.name}</h2>
-      <p class="small">${d.source === 'sample' ? html`${simTag('Sample text')} This is sample text for the demo.` : html`${(d.file.size / 1024).toFixed(0)} KB · read ${d.source === 'paste' ? 'from pasted text' : d.source === 'pdf' ? 'with the PDF reader' : d.source === 'docx' ? 'from the Word document' : 'as plain text'}`}</p></div></div>
+      <p class="small">${(d.file.size / 1024).toFixed(0)} KB · read ${d.source === 'paste' ? 'from pasted text' : d.source === 'pdf' ? 'with the PDF reader' : d.source === 'docx' ? 'from the Word document' : 'as plain text'}</p></div></div>
     <div class="notice">${icon('info')}<div>Labby’s importer is rule-based: it only uses what the file says. Anything missing or unclear is flagged below and left blank for you to fill in.</div></div>
     ${errs.length ? html`<div class="error-summary" role="alert" id="imp-ready-errors"><strong>Fix these before marking it Ready to Assign, or save it as a draft for now:</strong><ul>${errs.map((e) => html`<li>${e}</li>`)}</ul></div>` : ''}
     <div class="import-grid">
@@ -142,7 +141,7 @@ async function importFile(file) {
 }
 function importText(text, source) {
   const parsed = parseProcedureText(text);
-  const name = source === 'sample' ? 'Sample: paper chromatography.txt' : `Pasted text (${fmtDayTime(Date.now())})`;
+  const name = `Pasted text (${fmtDayTime(Date.now())})`;
   U.importFile = null;
   S.ui.importDraft = { stage: 'review', source, file: { name, size: new Blob([text]).size, type: 'text/plain' }, text, content: parsed.content, notes: parsed.notes };
   commit(); window.scrollTo(0, 0);
@@ -150,7 +149,7 @@ function importText(text, source) {
 function saveImport(state) {
   const d = S.ui.importDraft;
   if (state === 'ready') { d.readyErrors = readyErrors(d.content); if (d.readyErrors.length) { U.focusAfter = '#imp-ready-errors'; commit(); return; } }
-  const lab = newLab(d.content, d.source === 'paste' || d.source === 'sample' ? 'paste' : 'upload', { name: d.file.name, size: d.file.size, type: d.file.type, text: d.text });
+  const lab = newLab(d.content, d.source === 'paste' ? 'paste' : 'upload', { name: d.file.name, size: d.file.size, type: d.file.type, text: d.text });
   if (state === 'ready') saveLabVersion(lab, d.content, 'ready');
   if (U.importFile) { const f = U.importFile; FileVault.put(lab.id, f).then(() => { lab.original.key = lab.id; commit(); }).catch(() => { lab.original.note = 'The original file couldn’t be stored in this browser; the extracted text is kept.'; commit(); }); }
   S.ui.importDraft = null; U.importFile = null; S.ui.libStatus = 'all';

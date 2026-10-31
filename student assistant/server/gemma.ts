@@ -9,8 +9,8 @@ export interface GemmaRequest {
   prompt: string;
   /** Base64 JPEGs. */
   images?: string[];
-  /** JSON schema the reply must match. */
-  schema: object;
+  /** JSON schema the reply must match, or 'json' for any JSON object. */
+  schema: object | 'json';
   background?: boolean;
   /** Background requests sharing a key replace each other while queued. */
   key?: string;

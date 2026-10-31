@@ -6,7 +6,8 @@ The dashboard creates a lab, generates its join code, and holds the procedure. S
 
 Labby, in this repo, is already connected, through `src/js/85-student-site.js`. Labby has no server yet, so the connection runs in the teacher's browser. Open it at `http://localhost:8080/labby` and it connects by itself. Opened any other way, set the address and token under **Settings → Student site**. While a session is active:
 
-- The session is published under its live session code, with Labby's own steps and the period's lab groups as teams.
+- The session is published under its live session code, with Labby's own steps and the period's lab groups as teams. Anyone with the code can join.
+- When the teacher replaces the code, Labby calls `close` on the old one, and when the session ends it calls `end` on every code the session used.
 - Every 3 seconds, each group's progress is read back and applied through `LabSessionAPI`: completed steps, measurements, answers, help requests and safety alerts.
 - Blocking checkpoints with questions are sent to that group's students, and their answers are submitted as the checkpoint response. Teacher approval still happens in Labby.
 
@@ -127,6 +128,12 @@ Authorization: Bearer <token>
 Requests from other websites are allowed. Errors come back as `{ "error": "message" }` with a matching status code.
 
 ## Teacher actions
+
+### Stop new students joining with a code
+
+`POST /api/dashboard/labs/{code}/close`
+
+Students already in the lab keep working and their progress keeps coming through. New students who type the code are told it was replaced. Codes match ignoring case, spaces and dashes.
 
 ### Ask students a question
 

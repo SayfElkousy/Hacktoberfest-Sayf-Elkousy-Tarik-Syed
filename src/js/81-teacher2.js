@@ -37,7 +37,7 @@ function joinLinksBlock(cls) {
     <div class="stack tight" style="margin-top:8px">
       <div class="row between panel"><span class="small">Whole class <span class="muted">(students pick their period)</span></span><button class="btn btn-xs" data-action="copy-link" data-link="${joinLink(cls)}">${icon('copy', 'sm')}Copy link</button></div>
       ${cls.periods.map((p) => html`<div class="row between panel"><span class="small">${p.name} only</span><span class="row"><button class="btn btn-xs" data-action="copy-link" data-link="${joinLink(cls, p.id)}">${icon('copy', 'sm')}Copy link</button><a class="btn btn-xs btn-ghost" href="#join/${cls.joinCode}/${p.id}">Try it</a></span></div>`)}
-      <span class="hint">Links contain the current code, so regenerating the code turns old links off too. In this demo, links open Labby in this browser.</span>
+      <span class="hint">Links contain the current code, so regenerating the code turns old links off too.</span>
       ${checkField({ label: 'Accept new students with this code and its links', id: `jl-on-${cls.id}`, bind: `classes.${idx}.joinEnabled`, checked: cls.joinEnabled !== false, hint: 'Turn off to stop new joins without changing the code. Enrolled students aren’t affected.' })}
     </div></details>`;
 }
@@ -67,7 +67,7 @@ function cpReviewModal() {
   const sess = sessionById(p.sessionId); const c = sessionContent(sess); const cp = checkpointById(c, m.cpId); const t = classTrack(sess, p.groupId); const g = groupById(p.groupId);
   const st = Engine.gateState(t, cp); const recs = cpRecordsOf(t.key, t.groupId, cp.id);
   return modalShell({ title: `${g.name}: ${cp.title}`, sub: `${cpRuleText(cp)}. Checkpoint approvals are separate from the Help Queue.`, wide: true,
-    body: html`${cp.questions.length ? (recs.length ? recs.map((r) => html`<div class="panel stack tight" data-key="rv-${r.id}"><div class="row wrap"><strong>${r.studentId ? (studentById(r.studentId) || {}).name || 'Student' : 'Group response'}</strong><span class="xs muted">${r.submittedAt ? `Submitted ${fmtClock(r.submittedAt)}${r.submissions > 1 ? ` (attempt ${r.submissions})` : ''}` : 'Draft, not submitted'}</span>${r.simulated ? simTag('Sample answers') : ''}${r.status === 'returned' ? html`<span class="pill tone-bad">${icon('reopen')}Returned</span>` : ''}</div>
+    body: html`${cp.questions.length ? (recs.length ? recs.map((r) => html`<div class="panel stack tight" data-key="rv-${r.id}"><div class="row wrap"><strong>${r.studentId ? (studentById(r.studentId) || {}).name || 'Student' : 'Group response'}</strong><span class="xs muted">${r.submittedAt ? `Submitted ${fmtClock(r.submittedAt)}${r.submissions > 1 ? ` (attempt ${r.submissions})` : ''}` : 'Draft, not submitted'}</span>${r.status === 'returned' ? html`<span class="pill tone-bad">${icon('reopen')}Returned</span>` : ''}</div>
         ${cp.questions.map((q) => { const a = r.responses[q.id]; const opt = q.type === 'mc' ? q.options.find((o) => o.id === a) : null; const key = q.type === 'mc' && q.correct ? q.options.find((o) => o.id === q.correct) : null;
           return html`<div class="small"><span class="strong">${q.prompt}</span><br>${a ? (opt ? opt.text : `${a}${q.unit ? ' ' + q.unit : ''}`) : html`<span class="muted">No answer</span>`}
             ${key ? html` <span class="tag" style="${a === q.correct ? 'background:var(--ok-soft);color:var(--ok)' : 'background:var(--bad-soft);color:var(--bad)'}">${a === q.correct ? 'Correct' : `Correct answer: ${key.text}`}</span>` : ''}</div>`; })}</div>`)

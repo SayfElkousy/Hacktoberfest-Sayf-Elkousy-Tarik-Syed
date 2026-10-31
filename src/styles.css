@@ -105,28 +105,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .spacer { flex: 1; }
 
 /* ---------- Demo band ---------- */
-.demo-band {
-  background: repeating-linear-gradient(135deg, var(--tape) 0 14px, color-mix(in srgb, var(--tape) 82%, var(--tape-ink)) 14px 28px);
-  color: var(--tape-ink);
-  border-bottom: 1px solid color-mix(in srgb, var(--tape-ink) 25%, transparent);
-  font-size: 0.84rem;
-}
-.demo-band-inner {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding-block: 6px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-}
-.demo-tag {
-  display: inline-flex; align-items: center; gap: 5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.72rem;
-  background: var(--tape-ink); color: var(--tape); padding: 2px 8px; border-radius: 4px;
-}
-.demo-band .demo-text { flex: 1 1 260px; min-width: 0; }
-.demo-band .demo-text.short { display: none; }
-.demo-band select, .demo-band .btn { font-size: 0.8rem; }
-.demo-band label { font-weight: 700; }
-.demo-switch { display: inline-flex; align-items: center; gap: 6px; }
-.demo-switch select { background: var(--surface); color: var(--ink); border: 1px dashed var(--tape-ink); border-radius: 6px; padding: 3px 6px; }
 
 /* ---------- App shell ---------- */
 .app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: calc(100dvh - 34px); }
@@ -218,8 +196,6 @@ h1[tabindex="-1"]:focus, main[tabindex="-1"]:focus { outline: none; }
   }
   .topbar .menu-btn { display: inline-flex; }
   .topbar .ctx { order: 5; }
-  .demo-band .demo-text.long { display: none; }
-  .demo-band .demo-text.short { display: inline; }
   .scrim { position: fixed; inset: 0; background: var(--overlay); z-index: 55; }
   .topbar h1 { font-size: 1.15rem; }
   .ctx { width: 100%; }
@@ -245,8 +221,6 @@ h1[tabindex="-1"]:focus, main[tabindex="-1"]:focus { outline: none; }
 .btn-xs { min-height: 28px; padding: 2px 8px; font-size: 0.8rem; border-radius: 7px; gap: 5px; }
 .btn-icon { width: 38px; padding: 0; }
 .btn-icon.btn-sm { width: 32px; }
-.btn-demo { border-style: dashed; border-color: var(--tape-ink); color: var(--tape-ink); background: var(--tape); }
-.btn-demo:hover { background: color-mix(in srgb, var(--tape) 80%, var(--tape-ink)); }
 .btn-ai { background: var(--blue); border-color: var(--blue); color: var(--surface); }
 .btn-ai:hover { filter: brightness(0.92); background: var(--blue); }
 .link-btn { background: none; border: 0; padding: 0; color: var(--accent-ink); font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
@@ -305,7 +279,6 @@ h1[tabindex="-1"]:focus, main[tabindex="-1"]:focus { outline: none; }
 .tone-accent { background: var(--accent-soft); color: var(--accent-ink); }
 .tone-lost { background: var(--surface-3); color: var(--ink-2); border-color: var(--line-strong); border-style: dashed; }
 .tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; background: var(--surface-3); color: var(--ink-2); white-space: nowrap; }
-.tag.sim { background: var(--tape); color: var(--tape-ink); border: 1px dashed color-mix(in srgb, var(--tape-ink) 60%, transparent); }
 .tag.live { background: var(--blue-soft); color: var(--blue); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
@@ -399,7 +372,6 @@ tr.clickable:hover td { background: var(--surface-2); }
 .role-card:has(input:checked) .role-ico { background: var(--accent); color: var(--accent-contrast); }
 .role-card .check-mark { position: absolute; top: 12px; right: 12px; color: var(--accent); display: none; }
 .role-card:has(input:checked) .check-mark { display: block; }
-.demo-accounts { border: 1px dashed color-mix(in srgb, var(--tape-ink) 55%, transparent); background: color-mix(in srgb, var(--tape) 45%, var(--surface)); border-radius: var(--r); padding: 14px; }
 
 /* ---------- Overview ---------- */
 .quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
@@ -515,7 +487,6 @@ tr.clickable:hover td { background: var(--surface-2); }
 .notice.ai { border-color: color-mix(in srgb, var(--blue) 40%, var(--line)); background: var(--blue-soft); }
 .notice.warn { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); background: var(--warn-soft); }
 .notice.ok { border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); background: var(--ok-soft); }
-.notice.sim { border: 1px dashed color-mix(in srgb, var(--tape-ink) 60%, transparent); background: color-mix(in srgb, var(--tape) 50%, var(--surface)); }
 .notice .ico { margin-top: 2px; }
 
 /* ---------- Editor ---------- */
@@ -578,10 +549,6 @@ tr.clickable:hover td { background: var(--surface-2); }
 .explain > summary { list-style: none; cursor: pointer; color: var(--accent-ink); font-weight: 700; font-size: 0.86rem; display: inline-flex; gap: 5px; align-items: center; }
 .explain > summary::-webkit-details-marker { display: none; }
 .explain-pop { position: absolute; z-index: 30; right: 0; top: calc(100% + 6px); width: min(360px, 86vw); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 14px; font-size: 0.9rem; display: flex; flex-direction: column; gap: 8px; }
-.demo-panel { border: 1.5px dashed color-mix(in srgb, var(--tape-ink) 60%, transparent); background: color-mix(in srgb, var(--tape) 40%, var(--surface)); border-radius: var(--r-lg); }
-.demo-panel > summary { list-style: none; cursor: pointer; padding: 12px 16px; display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--tape-ink); }
-.demo-panel > summary::-webkit-details-marker { display: none; }
-.demo-panel .demo-body { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
 .timeline li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 0.88rem; }
 .timeline li:last-child { border-bottom: 0; }

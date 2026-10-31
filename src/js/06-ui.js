@@ -9,7 +9,6 @@ const labPill = (key) => pill(LAB_STATUS[key]);
 const sessionPill = (key) => pill(SESSION_STATUS[key]);
 const helpPill = (key) => pill(HELP_STATUS[key]);
 const catTag = (cat) => html`<span class="tag">${icon(HELP_CATEGORIES[cat] || 'question', 'sm')}${cat}</span>`;
-const simTag = (text = 'Simulated') => html`<span class="tag sim">${icon('zap', 'sm')}${text}</span>`;
 
 /** Step-segmented progress bar: one segment per procedure step. */
 function segs(total, doneSet, current, finished, label) {

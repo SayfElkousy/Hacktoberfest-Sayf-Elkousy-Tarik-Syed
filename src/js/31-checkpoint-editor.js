@@ -65,7 +65,7 @@ function studentInfoSection(path, p, c) {
     <div class="field"><span class="label">Attachments <span class="opt">(optional)</span></span>
       ${c.attachments.map((f, i) => html`<div class="row between panel" data-key="${p}-att-${f.id}"><span class="small">${icon('file', 'sm')} ${f.name} <span class="muted">${(f.size / 1024).toFixed(0)} KB</span></span><button class="btn btn-ghost btn-icon btn-sm" data-action="list-remove" data-path="${path}.attachments" data-index="${i}" aria-label="Remove ${f.name}">${icon('x', 'sm')}</button></div>`)}
       <div><label class="btn btn-sm" for="${p}-att">${icon('upload', 'sm')}Attach a file</label><input type="file" class="sr-only" id="${p}-att" data-change="att-pick" data-path="${path}.attachments"></div>
-      <span class="hint">Up to 15 MB. Stored in this browser in the demo.</span></div>
+      <span class="hint">Up to 15 MB. Stored in this browser.</span></div>
     <div class="teacher-only">${textareaField({ label: 'Teacher-only notes', id: `${p}-tnotes`, bind: `${path}.teacherNotes`, value: c.teacherNotes, rows: 2, opt: true, hint: 'Never sent to students, whatever the release settings say.' })}</div>
   </section>`;
 }

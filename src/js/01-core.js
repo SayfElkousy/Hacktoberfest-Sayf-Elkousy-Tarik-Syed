@@ -197,15 +197,15 @@ function setPath(obj, path, value) {
 }
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
-/* ---------- Storage (demo mode keeps everything in this browser) ---------- */
+/* ---------- Storage (everything is kept in this browser) ---------- */
 const Store = {
-  KEY: 'labby-demo-state-v2',
+  KEY: 'labby-state-v1',
   ok: true,
   load() { try { const s = localStorage.getItem(this.KEY); return s ? JSON.parse(s) : null; } catch (e) { this.ok = false; return null; } },
   save(state) { try { localStorage.setItem(this.KEY, JSON.stringify(state)); this.ok = true; } catch (e) { this.ok = false; } },
   clear() { try { localStorage.removeItem(this.KEY); } catch (e) { /* storage unavailable */ } },
 };
-/** Original uploaded files are kept in IndexedDB (demo stand-in for object storage). */
+/** Original uploaded files are kept in IndexedDB. */
 const FileVault = {
   db: null,
   open() {

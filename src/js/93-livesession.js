@@ -245,11 +245,22 @@ const AI_STATE = {
   paused: { label: 'Paused', tone: 'warn', icon: 'pause' }, reconnecting: { label: 'Reconnecting', tone: 'warn', icon: 'refresh' }, unavailable: { label: 'Unavailable', tone: 'bad', icon: 'wifiOff' },
   error: { label: 'Connection problem', tone: 'bad', icon: 'wifiOff' }, disconnected: { label: 'Disconnected', tone: 'idle', icon: 'wifiOff' }, idle: { label: 'Not connected', tone: 'idle', icon: 'wifiOff' },
 };
+function liveCodeForm() {
+  const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
+  return html`<form class="card card-pad stack" data-submit="live-code" novalidate style="margin-bottom:22px;max-width:720px">
+    <h2>Enter a live session code</h2>
+    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to your group’s session.</p>
+    <div class="row wrap" style="align-items:flex-end">
+      ${field({ label: 'Live session code', id: 'lc-code', bind: 'ui.liveCodeDraft.code', value: d.code, cls: 'grow', attrs: 'autocomplete="off" autocapitalize="characters" spellcheck="false" style="font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;max-width:220px"', error: d.error })}
+      <button class="btn btn-primary" type="submit">${icon('arrowRight')}Join session</button>
+    </div>
+  </form>`;
+}
 function liveStudentPicker() {
   const labs = studentLabsFor(S.currentUserId, S.ui.sClass);
   const live = labs.filter((x) => ['ready', 'inprogress'].includes(x.view.status));
   const rest = labs.filter((x) => !['ready', 'inprogress'].includes(x.view.status));
-  return html`<div class="page-intro"><p>Open live sessions for your classes. A session appears here when your teacher opens it.</p></div>
+  return html`${liveCodeForm()}<div class="page-intro"><p>Open live sessions for your classes. A session appears here when your teacher opens it.</p></div>
     ${live.length ? html`<div class="grid grid-2">${live.map(labCard)}</div>` : html`<div class="card">${emptyState({ ico: 'activity', title: 'No live session is open', text: 'When your teacher opens a lab session, an Enter Live Session button appears here and on your overview.', compact: true })}</div>`}
     ${rest.length ? html`<h2 style="margin:22px 0 10px">Other labs</h2><div class="grid grid-2">${rest.map(labCard)}</div>` : ''}`;
 }

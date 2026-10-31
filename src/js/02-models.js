@@ -31,7 +31,8 @@
  * @typedef {{id:string,labId:string,versionId:string,classId:string,periodIds:string[],scheduledFor:string,createdAt:number}} Assignment
  * @typedef {{id:string,assignmentId:string,labId:string,versionId:string,classId:string,periodId:string,
  *            status:'scheduled'|'active'|'paused'|'completed',scheduledFor:string,startedAt?:number,
- *            pausedAt?:number,pausedTotal:number,endedAt?:number}} Session
+ *            pausedAt?:number,pausedTotal:number,endedAt?:number,
+ *            liveCode?:string|null,liveCodeAt?:number,oldLiveCodes?:string[]}} Session  // liveCode exists only while active or paused
  * @typedef {{stepIndex:number,label:string,value:string,unit:string,at:number}} Observation
  * @typedef {{id:string,sessionId:string,groupId:string,stepIndex:number,completed:{index:number,at:number}[],
  *            stepStartedAt?:number,lastActivityAt?:number,connection:'online'|'lost',
@@ -283,8 +284,15 @@ function blankMaterial() { return { id: uid(), name: '', qtyPerGroup: 1, unit: '
 
 /* ---------- Join codes ---------- */
 const CODE_ALPHABET = 'ACDEFGHJKMNPQRTUVWXY34679';
+/** Every class and live session code, current or retired, so a new code never collides with one a student might still type. */
+function codesInUse() {
+  const taken = new Set();
+  S.classes.forEach((c) => { taken.add(c.joinCode); (c.previousCodes || []).forEach((p) => taken.add(p.code)); });
+  S.sessions.forEach((s) => { if (s.liveCode) taken.add(s.liveCode); (s.oldLiveCodes || []).forEach((c) => taken.add(c)); });
+  return taken;
+}
 function newJoinCode() {
-  const taken = new Set(S.classes.map((c) => c.joinCode));
+  const taken = codesInUse();
   let code;
   do {
     const pick = () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];

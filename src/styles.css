@@ -445,6 +445,8 @@ tr.clickable:hover td { background: var(--surface-2); }
 /* ---------- Classes ---------- */
 .code-panel { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; padding: 18px; border-radius: var(--r-lg); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .join-code { font-family: var(--font-mono); font-size: clamp(1.8rem, 5vw, 2.5rem); font-weight: 600; letter-spacing: 0.12em; color: var(--accent-ink); line-height: 1.1; }
+.join-code.live-code-big { display: block; font-size: clamp(3rem, 14vw, 6.5rem); letter-spacing: 0.16em; overflow-wrap: anywhere; }
+.live-code-chip { flex-wrap: wrap; }
 .join-preview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 @media (max-width: 640px) { .join-preview { grid-template-columns: minmax(0, 1fr); } }
 .jp-step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 8px; }

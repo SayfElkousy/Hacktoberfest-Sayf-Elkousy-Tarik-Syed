@@ -35,6 +35,13 @@ function reviewCard(d) {
       <span class="xs muted" style="align-self:center">Labby recalculated these numbers; the AI didn’t.</span></div>
   </section>`;
 }
+function liveCodeChip(sess) {
+  if (!ensureLiveCode(sess)) return '';
+  return html`<span class="code-chip live-code-chip"><span class="xs strong">Live session code</span><span class="mono" id="live-code-${sess.id}" aria-label="Live session code ${sess.liveCode.split('').join(' ')}">${sess.liveCode}</span>
+    <button class="btn btn-xs btn-primary" data-action="copy-live-code" data-sid="${sess.id}">${icon('copy', 'sm')}Copy</button>
+    <button class="btn btn-xs" data-action="live-code-show" data-sid="${sess.id}">${icon('eye', 'sm')}Show to class</button>
+    <button class="btn btn-xs btn-ghost" data-action="live-code-regen-ask" data-sid="${sess.id}">${icon('refresh', 'sm')}New code</button></span>`;
+}
 function joinCodeChip(cls) {
   return html`<span class="code-chip"><span class="xs strong">Class code</span><span class="mono">${cls.joinCode}</span><button class="btn btn-xs btn-primary" data-action="copy-code" data-cid="${cls.id}">${icon('copy', 'sm')}Copy code</button></span>`;
 }

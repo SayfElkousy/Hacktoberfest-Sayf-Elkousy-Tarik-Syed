@@ -34,7 +34,9 @@ function liveView() {
     <section class="card card-pad stack" aria-labelledby="ls-title">
       <div class="session-head">
         <div class="stack tight" style="min-width:0"><div class="row wrap">${sessionPill(sess.status)}<span class="tag">${icon('lock', 'sm')}Version ${v.number}</span></div>
-          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>${sess.status !== 'completed' ? joinCodeChip(cls) : ''}</div>
+          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>
+          ${sess.status === 'active' || sess.status === 'paused' ? html`<div class="row wrap">${liveCodeChip(sess)}${joinCodeChip(cls)}</div><span class="xs muted">Students enter the live session code on their Live Session page to go straight to this lab.</span>`
+            : sess.status === 'scheduled' ? html`${joinCodeChip(cls)}<span class="xs muted">A live session code for students appears when you start the session.</span>` : ''}</div>
         ${sess.status === 'scheduled' ? html`<div class="stack tight" style="align-items:flex-end"><span class="small muted">Scheduled ${sess.scheduledFor === todayISO() ? 'for today' : 'for ' + fmtDate(new Date(sess.scheduledFor + 'T12:00').getTime())} · ${plannedMinutes(c)} min planned</span>
           ${groupsAvailable ? html`<button class="btn btn-primary" data-action="session-start" data-sid="${sess.id}">${icon('play')}Start session</button>`
             : html`<a class="btn" href="#class-${cls.id}" data-action="class-period-go" data-cid="${cls.id}" data-pid="${sess.periodId}">${icon('layers')}Arrange lab groups first</a>`}</div>`
@@ -177,12 +179,31 @@ function demoPanel(sess, ps) {
     </div>` : ''}</details>`;
 }
 
+function liveCodeModal() {
+  const sess = sessionById(U.modal.sid); if (!sess || !ensureLiveCode(sess)) return '';
+  const c = sessionContent(sess);
+  return modalShell({ title: 'Join the live session', sub: `${c.title} · ${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}`, wide: true,
+    body: html`<div class="stack loose" style="text-align:center;padding:12px 0">
+      <span class="join-code live-code-big" id="live-code-big">${sess.liveCode}</span>
+      <ol class="ul-plain small stack tight" style="text-align:left;max-width:440px;margin:0 auto">
+        <li><strong>1.</strong> Open Labby and go to <strong>Live Session</strong>.</li>
+        <li><strong>2.</strong> Type the code <span class="mono">${sess.liveCode}</span> and choose <strong>Join session</strong>.</li>
+        <li><strong>3.</strong> Enter the session with your group and start step 1.</li></ol>
+      <p class="xs muted">Students who aren’t in ${periodName(sess.classId, sess.periodId)} or a lab group yet are added to the period and the smallest group. The code stops working when the session ends.</p></div>`,
+    foot: html`<button class="btn" data-action="modal-close">Close</button><button class="btn btn-primary" data-action="copy-live-code" data-sid="${sess.id}">${icon('copy')}Copy code</button>` });
+}
+function liveCodeRegenModal() {
+  const sess = sessionById(U.modal.sid); if (!sess || !sess.liveCode) return '';
+  return modalShell({ title: 'Make a new live session code?', body: html`<p>Code <strong class="mono">${sess.liveCode}</strong> will stop working right away.</p>
+    <p class="small muted">Students already in the session keep working. Anyone who hasn’t joined yet needs the new code.</p>`,
+    foot: html`<button class="btn" data-action="modal-close">Cancel</button><button class="btn btn-primary" data-action="live-code-regen" data-sid="${sess.id}">${icon('refresh')}Make new code</button>` });
+}
 function endSessionModal() {
   const sess = sessionById(U.modal.sid); const ps = progressFor(sess.id);
   const unfinished = ps.filter((p) => !p.finishedAt).length; const open = S.help.filter((h) => h.sessionId === sess.id && h.status !== 'resolved').length;
   return modalShell({ title: 'End this session?', body: html`<p>${labTitle(labById(sess.labId))} · ${periodName(sess.classId, sess.periodId)}</p>
     <ul class="ul-plain">${unfinished ? html`<li>${plural(unfinished, 'group')} haven’t finished. Their progress and measurements are kept.</li>` : html`<li>All groups have finished.</li>`}
-      ${open ? html`<li>${plural(open, 'help request')} still open. They stay in the Help Queue.</li>` : ''}<li>Students can’t record anything after the session ends.</li></ul>`,
+      ${open ? html`<li>${plural(open, 'help request')} still open. They stay in the Help Queue.</li>` : ''}<li>Students can’t record anything after the session ends.</li>${sess.liveCode ? html`<li>Live session code <span class="mono">${sess.liveCode}</span> stops working.</li>` : ''}</ul>`,
   foot: html`<button class="btn" data-action="modal-close">Keep running</button><button class="btn btn-danger solid" data-action="session-end" data-sid="${sess.id}">${icon('stopCircle')}End session</button>` });
 }
 

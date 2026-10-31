@@ -68,5 +68,16 @@ const STUDENT_SUBMITS = {
     finishOnboarding();
   },
   'profile-save': () => saveProfile(),
+  'live-code': () => {
+    const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
+    d.code = normCode(d.code);
+    const res = LabSessionAPI.joinByCode({ participantId: S.currentUserId, code: d.code });
+    if (!res.ok) { d.error = res.message; U.focusAfter = '#lc-code'; commit(); return; }
+    S.ui.liveCodeDraft = null; S.pendingInvite = null;
+    const u = me(); if (u) u.lastWorkspace = 'student';
+    commit(); go(`s/live/${res.sess.id}`);
+    const where = `${res.cls.name} · ${periodName(res.cls.id, res.sess.periodId)}`;
+    toast(res.enrolled ? `You joined ${where} and ${res.group.name}. Enter the session when your group is ready.` : res.grouped ? `You were added to ${res.group.name}. Enter the session when your group is ready.` : `Found your session: ${sessionContent(res.sess).title}.`, 'checkCircle');
+  },
   'join-lookup': () => { const d = S.ui.joinDraft; d.code = normCode(d.code); d.looked = true; d.periodId = ''; d.linkPeriod = ''; d.fromLink = d.fromLink || ''; d.periodError = ''; commit(); },
 };

@@ -455,6 +455,8 @@ tr.clickable:hover td { background: var(--surface-2); }
 /* ---------- Classes ---------- */
 .code-panel { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; padding: 18px; border-radius: var(--r-lg); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .join-code { font-family: var(--font-mono); font-size: clamp(1.8rem, 5vw, 2.5rem); font-weight: 600; letter-spacing: 0.12em; color: var(--accent-ink); line-height: 1.1; }
+.join-code.live-code-big { display: block; font-size: clamp(3rem, 14vw, 6.5rem); letter-spacing: 0.16em; overflow-wrap: anywhere; }
+.live-code-chip { flex-wrap: wrap; }
 .join-preview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 @media (max-width: 640px) { .join-preview { grid-template-columns: minmax(0, 1fr); } }
 .jp-step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -1023,7 +1025,8 @@ const FileVault = {
  * @typedef {{id:string,labId:string,versionId:string,classId:string,periodIds:string[],scheduledFor:string,createdAt:number}} Assignment
  * @typedef {{id:string,assignmentId:string,labId:string,versionId:string,classId:string,periodId:string,
  *            status:'scheduled'|'active'|'paused'|'completed',scheduledFor:string,startedAt?:number,
- *            pausedAt?:number,pausedTotal:number,endedAt?:number}} Session
+ *            pausedAt?:number,pausedTotal:number,endedAt?:number,
+ *            liveCode?:string|null,liveCodeAt?:number,oldLiveCodes?:string[]}} Session  // liveCode exists only while active or paused
  * @typedef {{stepIndex:number,label:string,value:string,unit:string,at:number}} Observation
  * @typedef {{id:string,sessionId:string,groupId:string,stepIndex:number,completed:{index:number,at:number}[],
  *            stepStartedAt?:number,lastActivityAt?:number,connection:'online'|'lost',
@@ -1275,8 +1278,15 @@ function blankMaterial() { return { id: uid(), name: '', qtyPerGroup: 1, unit: '
 
 /* ---------- Join codes ---------- */
 const CODE_ALPHABET = 'ACDEFGHJKMNPQRTUVWXY34679';
+/** Every class and live session code, current or retired, so a new code never collides with one a student might still type. */
+function codesInUse() {
+  const taken = new Set();
+  S.classes.forEach((c) => { taken.add(c.joinCode); (c.previousCodes || []).forEach((p) => taken.add(p.code)); });
+  S.sessions.forEach((s) => { if (s.liveCode) taken.add(s.liveCode); (s.oldLiveCodes || []).forEach((c) => taken.add(c)); });
+  return taken;
+}
 function newJoinCode() {
-  const taken = new Set(S.classes.map((c) => c.joinCode));
+  const taken = codesInUse();
   let code;
   do {
     const pick = () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
@@ -2703,7 +2713,7 @@ function liveErrorText(e) {
     case 'not_granted': case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed':
       return 'Live AI isn’t allowed for this page, so Labby switched to the simulated assistant. Your plan wasn’t changed.';
     case 'rate_limited': return 'Too many AI requests right now. Wait a minute and try again, or switch to the simulated assistant.';
-    case 'session_expired': return 'Your Claude session expired. Sign in again to use live AI.';
+    case 'session_expired': return 'Your session expired. Sign in again to use live AI.';
     case 'invalid_json': case 'empty_completion': return 'The response couldn’t be read as a lab plan. Try again, or ask for a smaller change.';
     case 'refused': return 'The assistant declined this request. Try rephrasing it.';
     case 'prompt_too_large': return 'The plan is too long to send. Remove some steps or notes and try again.';
@@ -2955,6 +2965,7 @@ function loadState() {
   } else {
     S = makeSeed(Date.now());
   }
+  S.sessions.forEach(ensureLiveCode); // sessions saved before live codes existed
   S.demo.lastSeen = Date.now();
 }
 let saveTimer = null, renderQueued = false;
@@ -2974,6 +2985,7 @@ function go(hash) { if (location.hash !== '#' + hash) location.hash = hash; else
 function resetDemo() {
   Store.clear();
   S = makeSeed(Date.now());
+  S.sessions.forEach(ensureLiveCode);
   U.modal = null; U.drawer = null; U.menu = false;
   commit();
   go(homeFor());
@@ -3063,6 +3075,7 @@ function startSession(sess) {
   if (!groups.length) return false;
   const now = Date.now();
   sess.status = 'active'; sess.startedAt = now; sess.pausedTotal = 0;
+  ensureLiveCode(sess);
   for (const g of groups) if (!S.progress.some((p) => p.sessionId === sess.id && p.groupId === g.id)) {
     S.progress.push(ensureProgressShape({ id: uid(), sessionId: sess.id, groupId: g.id, stepIndex: 0, completed: [], stepStartedAt: undefined, lastActivityAt: undefined, connection: 'online', atCheckpoint: null, observations: [], activity: [{ at: now, text: 'Session opened' }] }));
   }
@@ -3074,7 +3087,19 @@ function resumeSession(sess) {
   sess.pausedTotal = (sess.pausedTotal || 0) + delta; sess.pausedAt = undefined; sess.status = 'active';
   progressFor(sess.id).forEach((p) => { if (p.stepStartedAt && !p.finishedAt) p.stepStartedAt += delta; });
 }
-function endSession(sess) { if (sess.status === 'paused') resumeSession(sess); sess.status = 'completed'; sess.endedAt = Date.now(); }
+function endSession(sess) { if (sess.status === 'paused') resumeSession(sess); sess.status = 'completed'; sess.endedAt = Date.now(); retireLiveCode(sess); }
+/* Live session codes: one per running session. Students type it to jump straight into that session. */
+function ensureLiveCode(sess) {
+  if ((sess.status === 'active' || sess.status === 'paused') && !sess.liveCode) { sess.liveCode = newJoinCode(); sess.liveCodeAt = Date.now(); }
+  if (sess.status === 'completed' && sess.liveCode) retireLiveCode(sess);
+  return sess.liveCode || null;
+}
+function retireLiveCode(sess) {
+  if (!sess.liveCode) return;
+  sess.oldLiveCodes = [...(sess.oldLiveCodes || []), sess.liveCode].slice(-10);
+  sess.liveCode = null;
+}
+function replaceLiveCode(sess) { const old = sess.liveCode; retireLiveCode(sess); ensureLiveCode(sess); return old; }
 function approveCheckpoint(p) {
   const sess = sessionById(p.sessionId);
   return Engine.approve(classTrack(sess, p.groupId), p.atCheckpoint, S.currentUserId);
@@ -3410,6 +3435,52 @@ const LabSessionAPI = {
     emitEvent('session.entered', { trackKey: t.key, groupId: t.groupId, participantId });
     return { ...auth, track: t };
   },
+  /**
+   * A student types the live session code their teacher posted. A valid code
+   * enrolls them in that class period and puts them in a lab group when they
+   * aren't in one yet, so they can go straight to the session. In production
+   * this is a rate-limited server endpoint.
+   */
+  joinByCode({ participantId, code }) {
+    const c = normCode(code);
+    const user = S.users.find((u) => u.id === participantId);
+    if (!user) return { ok: false, code: 'not_signed_in', message: 'Sign in to join a live session.' };
+    if (!c) return { ok: false, code: 'empty', message: 'Enter the 6-character code your teacher posted.' };
+    const sess = S.sessions.find((s) => s.liveCode === c);
+    if (!sess) {
+      const old = S.sessions.find((s) => (s.oldLiveCodes || []).includes(c));
+      if (old) return old.status === 'completed'
+        ? { ok: false, code: 'ended', message: 'That live session has ended. Ask your teacher if there’s a new one.' }
+        : { ok: false, code: 'replaced', message: 'That code was replaced. Ask your teacher for the new code.' };
+      if (S.classes.some((x) => x.joinCode === c)) return { ok: false, code: 'class_code', message: 'That’s a class code, not a live session code. Use it on Join a class.' };
+      return { ok: false, code: 'invalid', message: 'No live session uses that code. Check for typos: codes look like K7Q-M4X.' };
+    }
+    const cls = classById(sess.classId);
+    if (!cls) return { ok: false, code: 'not_found', message: 'This lab session doesn’t exist.' };
+    if (cls.teacherId === participantId) return { ok: false, code: 'owner', message: 'You teach this class. Open the session from Live Progress instead.' };
+    const a = S.assignments.find((x) => x.id === sess.assignmentId);
+    if (!a || a.published === false) return { ok: false, code: 'not_published', message: 'Your teacher hasn’t published this lab yet.' };
+    const enr = S.enrollments.find((e) => e.studentId === participantId && e.classId === sess.classId);
+    if (enr && enr.periodId !== sess.periodId) return { ok: false, code: 'other_period', message: `This session is for ${periodName(cls.id, sess.periodId)}, but you’re enrolled in ${periodName(cls.id, enr.periodId)}. Ask your teacher for your period’s code.` };
+    if (!enr && cls.joinEnabled === false) return { ok: false, code: 'joining_off', message: `${cls.name} isn’t accepting new students right now. Ask your teacher to turn joining back on.` };
+    let group = studentGroup(sess.classId, sess.periodId, participantId);
+    if (!group && !groupsIn(sess.classId, sess.periodId).length) return { ok: false, code: 'no_group', message: 'This period has no lab groups yet. Ask your teacher to set them up.' };
+    const added = { enrolled: false, grouped: false };
+    if (!enr) {
+      ensureStudentRecord(user);
+      S.enrollments.push({ id: uid(), classId: cls.id, periodId: sess.periodId, studentId: participantId, joinedAt: Date.now(), via: 'live-code' });
+      added.enrolled = true;
+    }
+    if (!group) {
+      ensureStudentRecord(user);
+      group = [...groupsIn(sess.classId, sess.periodId)].sort((x, y) => x.memberIds.length - y.memberIds.length || naturalCmp(x.name, y.name))[0];
+      group.memberIds.push(participantId);
+      added.grouped = true;
+      const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id);
+      if (p) logActivity(p, `${displayName(user)} joined ${group.name} with the live session code`);
+    }
+    return { ok: true, sess, cls, group, ...added };
+  },
   track(sessionId, groupId) { const s = sessionById(sessionId); return s ? classTrack(s, groupId) : null; },
   write(eventId, t, fn) {
     if (seenEvent(eventId)) return { status: 'duplicate' };
@@ -3660,15 +3731,15 @@ Reply with only one JSON object in this shape:
 {"viewClear": true, "observation": "what is literally visible that matters for this step, or empty", "inference": "what you think it means, or empty", "guidance": "one or two short sentences to the student", "suggestedAction": "none | show_clearer_view | confirm_step | pause_and_get_teacher", "stepMayBeComplete": false, "teacherHelpRecommended": false, "helpCategory": "Equipment | Procedure | Measurement | Other", "helpReason": "short reason, or empty"}`;
 }
 class ClaudeGuidanceAdapter extends RecordingAdapter {
-  constructor() { super(); this.kind = 'claude'; this.label = 'Claude live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
+  constructor() { super(); this.kind = 'claude'; this.label = 'Live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
   get caps() { return { frames: this.images, audio: false, lowBandwidth: true }; }
   async connect(ctx) {
     this.ctx = ctx; this.setState('connecting');
     const s = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('sample').catch(() => null) : null;
-    if (!s) { this.setState('unavailable', 'Claude isn’t available in this view (for example, when Labby is opened outside Claude).'); throw { code: 'unavailable' }; }
+    if (!s) { this.setState('unavailable', 'Live AI isn’t available in this view.'); throw { code: 'unavailable' }; }
     this.sample = s;
     try { const lim = await s.limits(); this.images = !!(lim && lim.images); } catch (e) { this.images = false; }
-    this.setState('connected', this.images ? '' : 'Camera images can’t be sent from this view, so Claude answers typed questions only.');
+    this.setState('connected', this.images ? '' : 'Camera images can’t be sent from this view, so the AI answers typed questions only.');
   }
   cancel() { if (this.ctl) { this.ctl.abort(); this.ctl = null; } }
   async request(meta, { blob = null, question = '' }) {
@@ -3705,7 +3776,7 @@ class SimulatedAdapter extends RecordingAdapter {
   send(raw, meta = {}) { const m = { ...this.ctx.meta(), seq: this.ctx.nextSeq(), requestId: `sim_${uid(6)}`, ...meta }; const ev = validateGuidance(raw, m, 'simulated'); if (ev) this.emit({ type: 'guidance', event: ev }); }
   stepGuidance() { const s = this.ctx.step; if (!s || this.dropped) return; const first = String(s.instructions || '').split(/(?<=\.)\s/)[0]; this.later(() => this.send({ guidance: `[Simulated] Step ${s.number}, ${s.title}: ${first}` }), 400); }
   analyzeFrame() { return Promise.resolve(); }
-  ask(question) { this.later(() => this.send({ guidance: '[Simulated] This demo connection doesn’t read questions or images. With the recording service or Claude connected, the answer would come from your current step.' }, { question, withImage: false }), 500); return Promise.resolve(); }
+  ask(question) { this.later(() => this.send({ guidance: '[Simulated] This demo connection doesn’t read questions or images. With the recording service or live AI connected, the answer would come from your current step.' }, { question, withImage: false }), 500); return Promise.resolve(); }
   setStep(ctx) { this.ctx = ctx; this.timers.forEach(clearTimeout); this.timers = []; this.stepGuidance(); }
   pause() { this.setState('paused'); } resume() { this.setState('connected'); }
   disconnect() { this.timers.forEach(clearTimeout); this.setState('disconnected'); this.listeners.clear(); }
@@ -3763,7 +3834,7 @@ class RemoteRecordingAdapter extends RecordingAdapter {
   disconnect() { this.closing = true; this.inflight.clear(); try { this.send({ type: 'bye' }); if (this.ws) this.ws.close(); } catch (e) { /* closed */ } this.setState('disconnected'); this.listeners.clear(); }
 }
 const ADAPTERS = {
-  claude: { label: 'Claude live AI', make: () => new ClaudeGuidanceAdapter(), available: () => AI.available !== false },
+  claude: { label: 'Live AI', make: () => new ClaudeGuidanceAdapter(), available: () => AI.available !== false },
   remote: { label: 'Recording service', make: () => new RemoteRecordingAdapter(), available: () => RemoteRecordingAdapter.configured() },
   simulated: { label: 'Simulated (demo)', make: () => new SimulatedAdapter(), available: () => true },
 };
@@ -4330,7 +4401,7 @@ function activeLabCard(sess) {
   const rows = [...sm.ps].sort((a, b) => groupById(a.groupId).name.localeCompare(groupById(b.groupId).name, undefined, { numeric: true }));
   return html`<section class="card" aria-labelledby="ov-active">
     <div class="card-head"><div class="stack tight"><span class="eyebrow">Active lab</span><h2 id="ov-active">${c.title}</h2>
-      <span class="small muted">${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}</span></div><div class="row wrap">${joinCodeChip(classById(sess.classId))}${sessionPill(sess.status)}</div></div>
+      <span class="small muted">${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}</span></div><div class="row wrap">${liveCodeChip(sess)}${sessionPill(sess.status)}</div></div>
     <div class="card-body stack loose">
       <div class="clock-block">
         <div><div class="k">Elapsed</div><div class="v">${tickSession(sess, 'elapsed')}</div></div>
@@ -4702,7 +4773,7 @@ function designerInputs(d) {
     ${fold('logistics', 'Class logistics', 'users', logisticsBody, d)}
   </div>
   <div class="composer">
-    <div class="row between wrap"><span class="small muted">Assistant: ${aiMode() === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI (Claude)</span>` : simTag('Simulated')}</span>
+    <div class="row between wrap"><span class="small muted">Assistant: ${aiMode() === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated')}</span>
       <button class="btn btn-ai" data-action="designer-generate"${attr(AI.busy, 'disabled')}>${AI.busy ? html`<span class="spinner"></span>Working…` : html`${icon('sparkles')}${d.plan ? 'Generate new plan' : 'Generate plan'}`}</button></div>
     ${d.plan ? html`<span class="hint">Generating again replaces the current draft. To change it instead, use Revise with AI.</span>` : ''}
   </div>`;
@@ -4712,13 +4783,13 @@ function aiModeSwitch() {
   const avail = AI.available; const mode = aiMode();
   return html`<div class="stack tight">
     <div class="chips" role="radiogroup" aria-label="Assistant mode">
-      <button class="chip" role="radio" aria-checked="${mode === 'live'}" aria-pressed="${mode === 'live'}" data-action="ai-mode" data-mode="live"${attr(!avail || AI.denied, 'disabled')}>${icon('sparkles', 'sm')}Live AI (Claude)</button>
+      <button class="chip" role="radio" aria-checked="${mode === 'live'}" aria-pressed="${mode === 'live'}" data-action="ai-mode" data-mode="live"${attr(!avail || AI.denied, 'disabled')}>${icon('sparkles', 'sm')}Live AI</button>
       <button class="chip" role="radio" aria-checked="${mode === 'simulated'}" aria-pressed="${mode === 'simulated'}" data-action="ai-mode" data-mode="simulated">${icon('zap', 'sm')}Simulated</button>
     </div>
     <span class="hint">${avail === null ? 'Checking whether live AI is available here…'
       : AI.denied ? 'Live AI was declined for this page, so the simulated assistant is answering.'
       : !avail ? 'Live AI isn’t available in this view. The simulated assistant knows four sample experiments and three kinds of follow-up.'
-      : mode === 'live' ? 'Claude answers using your Claude account. You’ll be asked to allow it the first time.' : 'The simulated assistant knows four sample experiments and three kinds of follow-up.'}</span>
+      : mode === 'live' ? 'The AI answers using your account. You’ll be asked to allow it the first time.' : 'The simulated assistant knows four sample experiments and three kinds of follow-up.'}</span>
   </div>`;
 }
 
@@ -4740,11 +4811,11 @@ function designerAssistant(d) {
 
 function chatMessage(m) {
   if (m.role === 'user') return html`<div class="msg user" data-key="m-${m.id}">${m.text}</div>`;
-  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Claude · live AI</span>` : simTag('Simulated assistant')}</div>
-    <div class="row"><span class="spinner"></span><span>${m.source === 'live' ? 'Claude is working on it. This usually takes 20–60 seconds.' : 'Drafting a sample plan…'}</span></div>
+  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated assistant')}</div>
+    <div class="row"><span class="spinner"></span><span>${m.source === 'live' ? 'The AI is working on it. This usually takes 20–60 seconds.' : 'Drafting a sample plan…'}</span></div>
     ${m.source === 'live' ? html`<button class="btn btn-xs" style="align-self:flex-start" data-action="ai-stop">${icon('stopCircle', 'sm')}Stop</button>` : ''}</div>`;
   return html`<div class="msg assistant ${m.error ? 'error' : ''}" data-key="m-${m.id}">
-    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Claude · live AI</span>` : m.source === 'simulated' ? simTag('Simulated assistant') : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
+    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : m.source === 'simulated' ? simTag('Simulated assistant') : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
     <span style="white-space:pre-wrap">${m.text}</span>
     ${(m.changes && m.changes.length) || (m.check && m.check.length) ? html`<div class="changes"><strong class="small">What changed</strong><ul>
       ${(m.changes || []).map((c) => html`<li>${c}</li>`)}${(m.check || []).map((c) => html`<li><span class="muted">Labby’s check:</span> ${c}</li>`)}</ul></div>` : ''}
@@ -4764,7 +4835,7 @@ function planPreview(d) {
   return html`<section class="card" aria-labelledby="plan-title" aria-busy="${AI.busy}">
     <div class="card-head" style="align-items:flex-start">
       <div class="stack tight" style="min-width:0;flex:1 1 300px">
-        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by Claude</span>` : meta.source === 'simulated' ? simTag('Simulated plan') : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
+        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by AI</span>` : meta.source === 'simulated' ? simTag('Simulated plan') : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
         <h2 id="plan-title" style="font-size:1.35rem">${plan.title}</h2>
       </div>
     </div>
@@ -4963,7 +5034,7 @@ function proposeRevision(res, source) {
 function reviewCard(d) {
   const p = d.pending;
   return html`<section class="review-card" aria-labelledby="rc-h" data-key="rc-${p.id}">
-    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Claude</span>` : simTag('Simulated')}</div>
+    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Live AI</span>` : simTag('Simulated')}</div>
     <div class="rc-body">
       <div class="stack tight"><span class="eyebrow">Suggested change</span>${p.changes.length ? html`<ul class="ul-plain small">${p.changes.map((c) => html`<li>${c}</li>`)}</ul>` : html`<p class="small">Updates the plan as described.</p>`}</div>
       <div class="stack tight"><span class="eyebrow">Reason</span><p class="small">${p.reason}</p></div>
@@ -4973,6 +5044,13 @@ function reviewCard(d) {
     <div class="rc-foot"><button class="btn btn-primary" data-action="rc-accept">${icon('check', 'sm')}Accept</button><button class="btn" data-action="rc-edit">${icon('pencil', 'sm')}Accept and edit</button><button class="btn btn-ghost" data-action="rc-reject">${icon('x', 'sm')}Reject</button>
       <span class="xs muted" style="align-self:center">Labby recalculated these numbers; the AI didn’t.</span></div>
   </section>`;
+}
+function liveCodeChip(sess) {
+  if (!ensureLiveCode(sess)) return '';
+  return html`<span class="code-chip live-code-chip"><span class="xs strong">Live session code</span><span class="mono" id="live-code-${sess.id}" aria-label="Live session code ${sess.liveCode.split('').join(' ')}">${sess.liveCode}</span>
+    <button class="btn btn-xs btn-primary" data-action="copy-live-code" data-sid="${sess.id}">${icon('copy', 'sm')}Copy</button>
+    <button class="btn btn-xs" data-action="live-code-show" data-sid="${sess.id}">${icon('eye', 'sm')}Show to class</button>
+    <button class="btn btn-xs btn-ghost" data-action="live-code-regen-ask" data-sid="${sess.id}">${icon('refresh', 'sm')}New code</button></span>`;
 }
 function joinCodeChip(cls) {
   return html`<span class="code-chip"><span class="xs strong">Class code</span><span class="mono">${cls.joinCode}</span><button class="btn btn-xs btn-primary" data-action="copy-code" data-cid="${cls.id}">${icon('copy', 'sm')}Copy code</button></span>`;
@@ -5250,7 +5328,9 @@ function liveView() {
     <section class="card card-pad stack" aria-labelledby="ls-title">
       <div class="session-head">
         <div class="stack tight" style="min-width:0"><div class="row wrap">${sessionPill(sess.status)}<span class="tag">${icon('lock', 'sm')}Version ${v.number}</span></div>
-          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>${sess.status !== 'completed' ? joinCodeChip(cls) : ''}</div>
+          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>
+          ${sess.status === 'active' || sess.status === 'paused' ? html`<div class="row wrap">${liveCodeChip(sess)}${joinCodeChip(cls)}</div><span class="xs muted">Students enter the live session code on their Live Session page to go straight to this lab.</span>`
+            : sess.status === 'scheduled' ? html`${joinCodeChip(cls)}<span class="xs muted">A live session code for students appears when you start the session.</span>` : ''}</div>
         ${sess.status === 'scheduled' ? html`<div class="stack tight" style="align-items:flex-end"><span class="small muted">Scheduled ${sess.scheduledFor === todayISO() ? 'for today' : 'for ' + fmtDate(new Date(sess.scheduledFor + 'T12:00').getTime())} · ${plannedMinutes(c)} min planned</span>
           ${groupsAvailable ? html`<button class="btn btn-primary" data-action="session-start" data-sid="${sess.id}">${icon('play')}Start session</button>`
             : html`<a class="btn" href="#class-${cls.id}" data-action="class-period-go" data-cid="${cls.id}" data-pid="${sess.periodId}">${icon('layers')}Arrange lab groups first</a>`}</div>`
@@ -5393,12 +5473,31 @@ function demoPanel(sess, ps) {
     </div>` : ''}</details>`;
 }
 
+function liveCodeModal() {
+  const sess = sessionById(U.modal.sid); if (!sess || !ensureLiveCode(sess)) return '';
+  const c = sessionContent(sess);
+  return modalShell({ title: 'Join the live session', sub: `${c.title} · ${classById(sess.classId).name} · ${periodName(sess.classId, sess.periodId)}`, wide: true,
+    body: html`<div class="stack loose" style="text-align:center;padding:12px 0">
+      <span class="join-code live-code-big" id="live-code-big">${sess.liveCode}</span>
+      <ol class="ul-plain small stack tight" style="text-align:left;max-width:440px;margin:0 auto">
+        <li><strong>1.</strong> Open Labby and go to <strong>Live Session</strong>.</li>
+        <li><strong>2.</strong> Type the code <span class="mono">${sess.liveCode}</span> and choose <strong>Join session</strong>.</li>
+        <li><strong>3.</strong> Enter the session with your group and start step 1.</li></ol>
+      <p class="xs muted">Students who aren’t in ${periodName(sess.classId, sess.periodId)} or a lab group yet are added to the period and the smallest group. The code stops working when the session ends.</p></div>`,
+    foot: html`<button class="btn" data-action="modal-close">Close</button><button class="btn btn-primary" data-action="copy-live-code" data-sid="${sess.id}">${icon('copy')}Copy code</button>` });
+}
+function liveCodeRegenModal() {
+  const sess = sessionById(U.modal.sid); if (!sess || !sess.liveCode) return '';
+  return modalShell({ title: 'Make a new live session code?', body: html`<p>Code <strong class="mono">${sess.liveCode}</strong> will stop working right away.</p>
+    <p class="small muted">Students already in the session keep working. Anyone who hasn’t joined yet needs the new code.</p>`,
+    foot: html`<button class="btn" data-action="modal-close">Cancel</button><button class="btn btn-primary" data-action="live-code-regen" data-sid="${sess.id}">${icon('refresh')}Make new code</button>` });
+}
 function endSessionModal() {
   const sess = sessionById(U.modal.sid); const ps = progressFor(sess.id);
   const unfinished = ps.filter((p) => !p.finishedAt).length; const open = S.help.filter((h) => h.sessionId === sess.id && h.status !== 'resolved').length;
   return modalShell({ title: 'End this session?', body: html`<p>${labTitle(labById(sess.labId))} · ${periodName(sess.classId, sess.periodId)}</p>
     <ul class="ul-plain">${unfinished ? html`<li>${plural(unfinished, 'group')} haven’t finished. Their progress and measurements are kept.</li>` : html`<li>All groups have finished.</li>`}
-      ${open ? html`<li>${plural(open, 'help request')} still open. They stay in the Help Queue.</li>` : ''}<li>Students can’t record anything after the session ends.</li></ul>`,
+      ${open ? html`<li>${plural(open, 'help request')} still open. They stay in the Help Queue.</li>` : ''}<li>Students can’t record anything after the session ends.</li>${sess.liveCode ? html`<li>Live session code <span class="mono">${sess.liveCode}</span> stops working.</li>` : ''}</ul>`,
   foot: html`<button class="btn" data-action="modal-close">Keep running</button><button class="btn btn-danger solid" data-action="session-end" data-sid="${sess.id}">${icon('stopCircle')}End session</button>` });
 }
 
@@ -5910,7 +6009,7 @@ function settingsView() {
     <section class="card card-pad stack" aria-labelledby="dm-h" style="border-style:dashed"><div class="row"><span class="demo-tag">${icon('zap', 'sm')}Demo</span><h2 id="dm-h">About this prototype</h2></div>
       <ul class="ul-plain small">
         <li><strong>Sign-in</strong> is simulated. Accounts and data are saved only in this browser.</li>
-        <li><strong>Lab Designer</strong> uses live Claude responses when this page is allowed to; otherwise a labeled simulated assistant answers.</li>
+        <li><strong>Lab Designer</strong> uses live AI responses when this page is allowed to; otherwise a labeled simulated assistant answers.</li>
         <li><strong>File import</strong> really reads PDF (text-based), DOCX and TXT files in your browser. Structuring the text is rule-based.</li>
         <li><strong>Live student events</strong> come from real student devices when the student site is connected above. Otherwise they come from the demo controls on Live Progress.</li>
       </ul>
@@ -6342,6 +6441,17 @@ const STUDENT_SUBMITS = {
     finishOnboarding();
   },
   'profile-save': () => saveProfile(),
+  'live-code': () => {
+    const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
+    d.code = normCode(d.code);
+    const res = LabSessionAPI.joinByCode({ participantId: S.currentUserId, code: d.code });
+    if (!res.ok) { d.error = res.message; U.focusAfter = '#lc-code'; commit(); return; }
+    S.ui.liveCodeDraft = null; S.pendingInvite = null;
+    const u = me(); if (u) u.lastWorkspace = 'student';
+    commit(); go(`s/live/${res.sess.id}`);
+    const where = `${res.cls.name} · ${periodName(res.cls.id, res.sess.periodId)}`;
+    toast(res.enrolled ? `You joined ${where} and ${res.group.name}. Enter the session when your group is ready.` : res.grouped ? `You were added to ${res.group.name}. Enter the session when your group is ready.` : `Found your session: ${sessionContent(res.sess).title}.`, 'checkCircle');
+  },
   'join-lookup': () => { const d = S.ui.joinDraft; d.code = normCode(d.code); d.looked = true; d.periodId = ''; d.linkPeriod = ''; d.fromLink = d.fromLink || ''; d.periodError = ''; commit(); },
 };
 
@@ -6592,11 +6702,22 @@ const AI_STATE = {
   paused: { label: 'Paused', tone: 'warn', icon: 'pause' }, reconnecting: { label: 'Reconnecting', tone: 'warn', icon: 'refresh' }, unavailable: { label: 'Unavailable', tone: 'bad', icon: 'wifiOff' },
   error: { label: 'Connection problem', tone: 'bad', icon: 'wifiOff' }, disconnected: { label: 'Disconnected', tone: 'idle', icon: 'wifiOff' }, idle: { label: 'Not connected', tone: 'idle', icon: 'wifiOff' },
 };
+function liveCodeForm() {
+  const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
+  return html`<form class="card card-pad stack" data-submit="live-code" novalidate style="margin-bottom:22px;max-width:720px">
+    <h2>Enter a live session code</h2>
+    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to your group’s session.</p>
+    <div class="row wrap" style="align-items:flex-end">
+      ${field({ label: 'Live session code', id: 'lc-code', bind: 'ui.liveCodeDraft.code', value: d.code, cls: 'grow', attrs: 'autocomplete="off" autocapitalize="characters" spellcheck="false" style="font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;max-width:220px"', error: d.error })}
+      <button class="btn btn-primary" type="submit">${icon('arrowRight')}Join session</button>
+    </div>
+  </form>`;
+}
 function liveStudentPicker() {
   const labs = studentLabsFor(S.currentUserId, S.ui.sClass);
   const live = labs.filter((x) => ['ready', 'inprogress'].includes(x.view.status));
   const rest = labs.filter((x) => !['ready', 'inprogress'].includes(x.view.status));
-  return html`<div class="page-intro"><p>Open live sessions for your classes. A session appears here when your teacher opens it.</p></div>
+  return html`${liveCodeForm()}<div class="page-intro"><p>Open live sessions for your classes. A session appears here when your teacher opens it.</p></div>
     ${live.length ? html`<div class="grid grid-2">${live.map(labCard)}</div>` : html`<div class="card">${emptyState({ ico: 'activity', title: 'No live session is open', text: 'When your teacher opens a lab session, an Enter Live Session button appears here and on your overview.', compact: true })}</div>`}
     ${rest.length ? html`<h2 style="margin:22px 0 10px">Other labs</h2><div class="grid grid-2">${rest.map(labCard)}</div>` : ''}`;
 }
@@ -6636,7 +6757,7 @@ function liveLobby(m) {
   </div>`;
 }
 function privacyText(kind, prefs) {
-  if (kind === 'claude') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to Claude through the Claude account of the person viewing this page. Video is never streamed.</li>
+  if (kind === 'claude') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to the AI assistant through the account of the person viewing this page. Video is never streamed.</li>
     <li><strong>What’s stored:</strong> Labby doesn’t save photos or video. The guidance text is saved with your group’s progress.</li>
     <li><strong>Who can see it:</strong> your group sees the guidance. Your teacher sees step progress, measurements, checkpoint answers and AI flags that ask for teacher help, but not photos.</li></ul>`;
   if (kind === 'remote') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> sampled camera frames and this step’s instructions go to your school’s recording service (${(LABBY_CONFIG.recordingService.wsUrl || '').replace(/^wss?:\/\//, '').split('/')[0] || 'not configured'}).</li><li><strong>What’s stored:</strong> set by that service’s retention policy. Labby doesn’t save video.</li><li><strong>Who can see it:</strong> your teacher sees progress and AI flags, not video.</li></ul>`;
@@ -6672,7 +6793,7 @@ function liveSetup(m) {
         </div>
         ${Media.devices.length > 1 && !L.sim ? html`<div class="field"><label for="cam-dev">Camera</label><select class="select sm" id="cam-dev" data-change="live-device">${options(Media.devices.map((d) => [d.id, d.label]), Media.deviceId)}</select></div>` : ''}
         <label class="check" for="live-mic"><input type="checkbox" id="live-mic" data-change="live-mic-pref"${attr(prefs.mic, 'checked')}${attr(L.sim || kind === 'claude', 'disabled')}><span>Use the microphone <span class="opt">(optional)</span>
-          <span class="hint" style="display:block">${kind === 'claude' ? 'Claude guidance uses still photos only, so audio isn’t sent.' : kind === 'simulated' ? 'In the demo, audio stays on this device.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
+          <span class="hint" style="display:block">${kind === 'claude' ? 'Live AI guidance uses still photos only, so audio isn’t sent.' : kind === 'simulated' ? 'In the demo, audio stays on this device.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
       </section>
       <section class="card card-pad stack" aria-labelledby="ai-h">
         <h3 id="ai-h">AI connection</h3>
@@ -6818,7 +6939,7 @@ function guidancePanel(m) {
   const L = U.live; const p = m.t.p; const prefs = livePrefs();
   const log = (p.guidance || []).slice().reverse(); const latest = log[0];
   const kindLabel = { guidance: 'AI guidance', answer: 'AI answer', unclear_view: 'AI: camera view unclear', suggested_completion: 'AI suggestion', help_recommended: 'AI recommends asking your teacher', observation: 'AI observation' };
-  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag ${g.source === 'simulated' ? 'sim' : 'live'}">${icon(g.source === 'simulated' ? 'zap' : 'sparkles', 'sm')}${g.source === 'simulated' ? 'Simulated' : g.source === 'claude' ? 'Claude' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
+  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag ${g.source === 'simulated' ? 'sim' : 'live'}">${icon(g.source === 'simulated' ? 'zap' : 'sparkles', 'sm')}${g.source === 'simulated' ? 'Simulated' : g.source === 'claude' ? 'Live AI' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
     ${g.question ? html`<p class="small muted">You asked: “${g.question}”</p>` : ''}
     ${g.observation ? html`<p class="small"><strong>Sees:</strong> ${g.observation}</p>` : ''}${g.inference ? html`<p class="small"><strong>Thinks:</strong> ${g.inference}</p>` : ''}
     <p class="${big ? '' : 'small'}">${g.guidance}</p></div>`;
@@ -6974,6 +7095,8 @@ function modalView() {
     case 'assign': return assignModal();
     case 'review': return reviewModal();
     case 'end': return endSessionModal();
+    case 'live-code': return liveCodeModal();
+    case 'live-code-regen': return liveCodeRegenModal();
     case 'reset': return resetModal();
     case 'student-preview': return studentPreviewModal();
     case 'cp-review': return cpReviewModal();
@@ -7159,6 +7282,10 @@ const ACTIONS = {
   'session-start': (el) => { const s = sessFromEl(el); if (!startSession(s)) { toast('Arrange this period into lab groups before starting.', 'alert'); return; } commit(); toast('Session started. Groups can begin step 1.', 'play'); },
   'session-pause': (el) => { pauseSession(sessFromEl(el)); commit(); toast('Session paused. Timers are frozen.', 'pause'); },
   'session-resume': (el) => { resumeSession(sessFromEl(el)); commit(); toast('Session resumed.', 'play'); },
+  'copy-live-code': (el) => { const s = sessFromEl(el); if (!s || !s.liveCode) return; copyText(s.liveCode, document.getElementById('live-code-big') || document.getElementById(`live-code-${s.id}`)); },
+  'live-code-show': (el) => { U.modal = { type: 'live-code', sid: el.dataset.sid }; commit(); },
+  'live-code-regen-ask': (el) => { U.modal = { type: 'live-code-regen', sid: el.dataset.sid }; commit(); },
+  'live-code-regen': (el) => { const s = sessFromEl(el); const old = replaceLiveCode(s); U.modal = null; commit(); toast(`New live session code ${s.liveCode}. ${old} no longer works.`, 'key'); },
   'session-end-ask': (el) => { U.modal = { type: 'end', sid: el.dataset.sid }; commit(); },
   'session-end': (el) => { endSession(sessFromEl(el)); U.modal = null; commit(); toast('Session ended. Results are kept.', 'stopCircle'); },
   'live-filter': (el) => { S.ui.liveFilter = el.dataset.f; commit(); },

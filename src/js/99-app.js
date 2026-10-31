@@ -24,6 +24,8 @@ function modalView() {
     case 'assign': return assignModal();
     case 'review': return reviewModal();
     case 'end': return endSessionModal();
+    case 'live-code': return liveCodeModal();
+    case 'live-code-regen': return liveCodeRegenModal();
     case 'reset': return resetModal();
     case 'student-preview': return studentPreviewModal();
     case 'cp-review': return cpReviewModal();
@@ -209,6 +211,10 @@ const ACTIONS = {
   'session-start': (el) => { const s = sessFromEl(el); if (!startSession(s)) { toast('Arrange this period into lab groups before starting.', 'alert'); return; } commit(); toast('Session started. Groups can begin step 1.', 'play'); },
   'session-pause': (el) => { pauseSession(sessFromEl(el)); commit(); toast('Session paused. Timers are frozen.', 'pause'); },
   'session-resume': (el) => { resumeSession(sessFromEl(el)); commit(); toast('Session resumed.', 'play'); },
+  'copy-live-code': (el) => { const s = sessFromEl(el); if (!s || !s.liveCode) return; copyText(s.liveCode, document.getElementById('live-code-big') || document.getElementById(`live-code-${s.id}`)); },
+  'live-code-show': (el) => { U.modal = { type: 'live-code', sid: el.dataset.sid }; commit(); },
+  'live-code-regen-ask': (el) => { U.modal = { type: 'live-code-regen', sid: el.dataset.sid }; commit(); },
+  'live-code-regen': (el) => { const s = sessFromEl(el); const old = replaceLiveCode(s); U.modal = null; commit(); toast(`New live session code ${s.liveCode}. ${old} no longer works.`, 'key'); },
   'session-end-ask': (el) => { U.modal = { type: 'end', sid: el.dataset.sid }; commit(); },
   'session-end': (el) => { endSession(sessFromEl(el)); U.modal = null; commit(); toast('Session ended. Results are kept.', 'stopCircle'); },
   'live-filter': (el) => { S.ui.liveFilter = el.dataset.f; commit(); },

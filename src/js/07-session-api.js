@@ -221,6 +221,52 @@ const LabSessionAPI = {
     emitEvent('session.entered', { trackKey: t.key, groupId: t.groupId, participantId });
     return { ...auth, track: t };
   },
+  /**
+   * A student types the live session code their teacher posted. A valid code
+   * enrolls them in that class period and puts them in a lab group when they
+   * aren't in one yet, so they can go straight to the session. In production
+   * this is a rate-limited server endpoint.
+   */
+  joinByCode({ participantId, code }) {
+    const c = normCode(code);
+    const user = S.users.find((u) => u.id === participantId);
+    if (!user) return { ok: false, code: 'not_signed_in', message: 'Sign in to join a live session.' };
+    if (!c) return { ok: false, code: 'empty', message: 'Enter the 6-character code your teacher posted.' };
+    const sess = S.sessions.find((s) => s.liveCode === c);
+    if (!sess) {
+      const old = S.sessions.find((s) => (s.oldLiveCodes || []).includes(c));
+      if (old) return old.status === 'completed'
+        ? { ok: false, code: 'ended', message: 'That live session has ended. Ask your teacher if there’s a new one.' }
+        : { ok: false, code: 'replaced', message: 'That code was replaced. Ask your teacher for the new code.' };
+      if (S.classes.some((x) => x.joinCode === c)) return { ok: false, code: 'class_code', message: 'That’s a class code, not a live session code. Use it on Join a class.' };
+      return { ok: false, code: 'invalid', message: 'No live session uses that code. Check for typos: codes look like K7Q-M4X.' };
+    }
+    const cls = classById(sess.classId);
+    if (!cls) return { ok: false, code: 'not_found', message: 'This lab session doesn’t exist.' };
+    if (cls.teacherId === participantId) return { ok: false, code: 'owner', message: 'You teach this class. Open the session from Live Progress instead.' };
+    const a = S.assignments.find((x) => x.id === sess.assignmentId);
+    if (!a || a.published === false) return { ok: false, code: 'not_published', message: 'Your teacher hasn’t published this lab yet.' };
+    const enr = S.enrollments.find((e) => e.studentId === participantId && e.classId === sess.classId);
+    if (enr && enr.periodId !== sess.periodId) return { ok: false, code: 'other_period', message: `This session is for ${periodName(cls.id, sess.periodId)}, but you’re enrolled in ${periodName(cls.id, enr.periodId)}. Ask your teacher for your period’s code.` };
+    if (!enr && cls.joinEnabled === false) return { ok: false, code: 'joining_off', message: `${cls.name} isn’t accepting new students right now. Ask your teacher to turn joining back on.` };
+    let group = studentGroup(sess.classId, sess.periodId, participantId);
+    if (!group && !groupsIn(sess.classId, sess.periodId).length) return { ok: false, code: 'no_group', message: 'This period has no lab groups yet. Ask your teacher to set them up.' };
+    const added = { enrolled: false, grouped: false };
+    if (!enr) {
+      ensureStudentRecord(user);
+      S.enrollments.push({ id: uid(), classId: cls.id, periodId: sess.periodId, studentId: participantId, joinedAt: Date.now(), via: 'live-code' });
+      added.enrolled = true;
+    }
+    if (!group) {
+      ensureStudentRecord(user);
+      group = [...groupsIn(sess.classId, sess.periodId)].sort((x, y) => x.memberIds.length - y.memberIds.length || naturalCmp(x.name, y.name))[0];
+      group.memberIds.push(participantId);
+      added.grouped = true;
+      const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id);
+      if (p) logActivity(p, `${displayName(user)} joined ${group.name} with the live session code`);
+    }
+    return { ok: true, sess, cls, group, ...added };
+  },
   track(sessionId, groupId) { const s = sessionById(sessionId); return s ? classTrack(s, groupId) : null; },
   write(eventId, t, fn) {
     if (seenEvent(eventId)) return { status: 'duplicate' };

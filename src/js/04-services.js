@@ -377,7 +377,7 @@ function liveErrorText(e) {
     case 'not_granted': case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed':
       return 'Live AI isn’t allowed for this page, so Labby switched to the simulated assistant. Your plan wasn’t changed.';
     case 'rate_limited': return 'Too many AI requests right now. Wait a minute and try again, or switch to the simulated assistant.';
-    case 'session_expired': return 'Your Claude session expired. Sign in again to use live AI.';
+    case 'session_expired': return 'Your session expired. Sign in again to use live AI.';
     case 'invalid_json': case 'empty_completion': return 'The response couldn’t be read as a lab plan. Try again, or ask for a smaller change.';
     case 'refused': return 'The assistant declined this request. Try rephrasing it.';
     case 'prompt_too_large': return 'The plan is too long to send. Remove some steps or notes and try again.';

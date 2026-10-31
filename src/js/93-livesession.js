@@ -245,11 +245,22 @@ const AI_STATE = {
   paused: { label: 'Paused', tone: 'warn', icon: 'pause' }, reconnecting: { label: 'Reconnecting', tone: 'warn', icon: 'refresh' }, unavailable: { label: 'Unavailable', tone: 'bad', icon: 'wifiOff' },
   error: { label: 'Connection problem', tone: 'bad', icon: 'wifiOff' }, disconnected: { label: 'Disconnected', tone: 'idle', icon: 'wifiOff' }, idle: { label: 'Not connected', tone: 'idle', icon: 'wifiOff' },
 };
+function liveCodeForm() {
+  const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
+  return html`<form class="card card-pad stack" data-submit="live-code" novalidate style="margin-bottom:22px;max-width:720px">
+    <h2>Enter a live session code</h2>
+    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to your group’s session.</p>
+    <div class="row wrap" style="align-items:flex-end">
+      ${field({ label: 'Live session code', id: 'lc-code', bind: 'ui.liveCodeDraft.code', value: d.code, cls: 'grow', attrs: 'autocomplete="off" autocapitalize="characters" spellcheck="false" style="font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;max-width:220px"', error: d.error })}
+      <button class="btn btn-primary" type="submit">${icon('arrowRight')}Join session</button>
+    </div>
+  </form>`;
+}
 function liveStudentPicker() {
   const labs = studentLabsFor(S.currentUserId, S.ui.sClass);
   const live = labs.filter((x) => ['ready', 'inprogress'].includes(x.view.status));
   const rest = labs.filter((x) => !['ready', 'inprogress'].includes(x.view.status));
-  return html`<div class="page-intro"><p>Open live sessions for your classes. A session appears here when your teacher opens it.</p></div>
+  return html`${liveCodeForm()}<div class="page-intro"><p>Open live sessions for your classes. A session appears here when your teacher opens it.</p></div>
     ${live.length ? html`<div class="grid grid-2">${live.map(labCard)}</div>` : html`<div class="card">${emptyState({ ico: 'activity', title: 'No live session is open', text: 'When your teacher opens a lab session, an Enter Live Session button appears here and on your overview.', compact: true })}</div>`}
     ${rest.length ? html`<h2 style="margin:22px 0 10px">Other labs</h2><div class="grid grid-2">${rest.map(labCard)}</div>` : ''}`;
 }
@@ -289,7 +300,7 @@ function liveLobby(m) {
   </div>`;
 }
 function privacyText(kind, prefs) {
-  if (kind === 'claude') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to Claude through the Claude account of the person viewing this page. Video is never streamed.</li>
+  if (kind === 'claude') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to the AI assistant through the account of the person viewing this page. Video is never streamed.</li>
     <li><strong>What’s stored:</strong> Labby doesn’t save photos or video. The guidance text is saved with your group’s progress.</li>
     <li><strong>Who can see it:</strong> your group sees the guidance. Your teacher sees step progress, measurements, checkpoint answers and AI flags that ask for teacher help, but not photos.</li></ul>`;
   if (kind === 'remote') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> sampled camera frames and this step’s instructions go to your school’s recording service (${(LABBY_CONFIG.recordingService.wsUrl || '').replace(/^wss?:\/\//, '').split('/')[0] || 'not configured'}).</li><li><strong>What’s stored:</strong> set by that service’s retention policy. Labby doesn’t save video.</li><li><strong>Who can see it:</strong> your teacher sees progress and AI flags, not video.</li></ul>`;
@@ -325,7 +336,7 @@ function liveSetup(m) {
         </div>
         ${Media.devices.length > 1 && !L.sim ? html`<div class="field"><label for="cam-dev">Camera</label><select class="select sm" id="cam-dev" data-change="live-device">${options(Media.devices.map((d) => [d.id, d.label]), Media.deviceId)}</select></div>` : ''}
         <label class="check" for="live-mic"><input type="checkbox" id="live-mic" data-change="live-mic-pref"${attr(prefs.mic, 'checked')}${attr(L.sim || kind === 'claude', 'disabled')}><span>Use the microphone <span class="opt">(optional)</span>
-          <span class="hint" style="display:block">${kind === 'claude' ? 'Claude guidance uses still photos only, so audio isn’t sent.' : kind === 'simulated' ? 'In the demo, audio stays on this device.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
+          <span class="hint" style="display:block">${kind === 'claude' ? 'Live AI guidance uses still photos only, so audio isn’t sent.' : kind === 'simulated' ? 'In the demo, audio stays on this device.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
       </section>
       <section class="card card-pad stack" aria-labelledby="ai-h">
         <h3 id="ai-h">AI connection</h3>
@@ -471,7 +482,7 @@ function guidancePanel(m) {
   const L = U.live; const p = m.t.p; const prefs = livePrefs();
   const log = (p.guidance || []).slice().reverse(); const latest = log[0];
   const kindLabel = { guidance: 'AI guidance', answer: 'AI answer', unclear_view: 'AI: camera view unclear', suggested_completion: 'AI suggestion', help_recommended: 'AI recommends asking your teacher', observation: 'AI observation' };
-  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag ${g.source === 'simulated' ? 'sim' : 'live'}">${icon(g.source === 'simulated' ? 'zap' : 'sparkles', 'sm')}${g.source === 'simulated' ? 'Simulated' : g.source === 'claude' ? 'Claude' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
+  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag ${g.source === 'simulated' ? 'sim' : 'live'}">${icon(g.source === 'simulated' ? 'zap' : 'sparkles', 'sm')}${g.source === 'simulated' ? 'Simulated' : g.source === 'claude' ? 'Live AI' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
     ${g.question ? html`<p class="small muted">You asked: “${g.question}”</p>` : ''}
     ${g.observation ? html`<p class="small"><strong>Sees:</strong> ${g.observation}</p>` : ''}${g.inference ? html`<p class="small"><strong>Thinks:</strong> ${g.inference}</p>` : ''}
     <p class="${big ? '' : 'small'}">${g.guidance}</p></div>`;

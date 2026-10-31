@@ -24,7 +24,7 @@ function proposeRevision(res, source) {
 function reviewCard(d) {
   const p = d.pending;
   return html`<section class="review-card" aria-labelledby="rc-h" data-key="rc-${p.id}">
-    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Claude</span>` : simTag('Simulated')}</div>
+    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Live AI</span>` : simTag('Simulated')}</div>
     <div class="rc-body">
       <div class="stack tight"><span class="eyebrow">Suggested change</span>${p.changes.length ? html`<ul class="ul-plain small">${p.changes.map((c) => html`<li>${c}</li>`)}</ul>` : html`<p class="small">Updates the plan as described.</p>`}</div>
       <div class="stack tight"><span class="eyebrow">Reason</span><p class="small">${p.reason}</p></div>
@@ -34,6 +34,13 @@ function reviewCard(d) {
     <div class="rc-foot"><button class="btn btn-primary" data-action="rc-accept">${icon('check', 'sm')}Accept</button><button class="btn" data-action="rc-edit">${icon('pencil', 'sm')}Accept and edit</button><button class="btn btn-ghost" data-action="rc-reject">${icon('x', 'sm')}Reject</button>
       <span class="xs muted" style="align-self:center">Labby recalculated these numbers; the AI didn’t.</span></div>
   </section>`;
+}
+function liveCodeChip(sess) {
+  if (!ensureLiveCode(sess)) return '';
+  return html`<span class="code-chip live-code-chip"><span class="xs strong">Live session code</span><span class="mono" id="live-code-${sess.id}" aria-label="Live session code ${sess.liveCode.split('').join(' ')}">${sess.liveCode}</span>
+    <button class="btn btn-xs btn-primary" data-action="copy-live-code" data-sid="${sess.id}">${icon('copy', 'sm')}Copy</button>
+    <button class="btn btn-xs" data-action="live-code-show" data-sid="${sess.id}">${icon('eye', 'sm')}Show to class</button>
+    <button class="btn btn-xs btn-ghost" data-action="live-code-regen-ask" data-sid="${sess.id}">${icon('refresh', 'sm')}New code</button></span>`;
 }
 function joinCodeChip(cls) {
   return html`<span class="code-chip"><span class="xs strong">Class code</span><span class="mono">${cls.joinCode}</span><button class="btn btn-xs btn-primary" data-action="copy-code" data-cid="${cls.id}">${icon('copy', 'sm')}Copy code</button></span>`;

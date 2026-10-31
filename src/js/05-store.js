@@ -28,6 +28,7 @@ function loadState() {
   } else {
     S = makeSeed(Date.now());
   }
+  S.sessions.forEach(ensureLiveCode); // sessions saved before live codes existed
   S.demo.lastSeen = Date.now();
 }
 let saveTimer = null, renderQueued = false;
@@ -47,6 +48,7 @@ function go(hash) { if (location.hash !== '#' + hash) location.hash = hash; else
 function resetDemo() {
   Store.clear();
   S = makeSeed(Date.now());
+  S.sessions.forEach(ensureLiveCode);
   U.modal = null; U.drawer = null; U.menu = false;
   commit();
   go(homeFor());
@@ -136,6 +138,7 @@ function startSession(sess) {
   if (!groups.length) return false;
   const now = Date.now();
   sess.status = 'active'; sess.startedAt = now; sess.pausedTotal = 0;
+  ensureLiveCode(sess);
   for (const g of groups) if (!S.progress.some((p) => p.sessionId === sess.id && p.groupId === g.id)) {
     S.progress.push(ensureProgressShape({ id: uid(), sessionId: sess.id, groupId: g.id, stepIndex: 0, completed: [], stepStartedAt: undefined, lastActivityAt: undefined, connection: 'online', atCheckpoint: null, observations: [], activity: [{ at: now, text: 'Session opened' }] }));
   }
@@ -147,7 +150,19 @@ function resumeSession(sess) {
   sess.pausedTotal = (sess.pausedTotal || 0) + delta; sess.pausedAt = undefined; sess.status = 'active';
   progressFor(sess.id).forEach((p) => { if (p.stepStartedAt && !p.finishedAt) p.stepStartedAt += delta; });
 }
-function endSession(sess) { if (sess.status === 'paused') resumeSession(sess); sess.status = 'completed'; sess.endedAt = Date.now(); }
+function endSession(sess) { if (sess.status === 'paused') resumeSession(sess); sess.status = 'completed'; sess.endedAt = Date.now(); retireLiveCode(sess); }
+/* Live session codes: one per running session. Students type it to jump straight into that session. */
+function ensureLiveCode(sess) {
+  if ((sess.status === 'active' || sess.status === 'paused') && !sess.liveCode) { sess.liveCode = newJoinCode(); sess.liveCodeAt = Date.now(); }
+  if (sess.status === 'completed' && sess.liveCode) retireLiveCode(sess);
+  return sess.liveCode || null;
+}
+function retireLiveCode(sess) {
+  if (!sess.liveCode) return;
+  sess.oldLiveCodes = [...(sess.oldLiveCodes || []), sess.liveCode].slice(-10);
+  sess.liveCode = null;
+}
+function replaceLiveCode(sess) { const old = sess.liveCode; retireLiveCode(sess); ensureLiveCode(sess); return old; }
 function approveCheckpoint(p) {
   const sess = sessionById(p.sessionId);
   return Engine.approve(classTrack(sess, p.groupId), p.atCheckpoint, S.currentUserId);

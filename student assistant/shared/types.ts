@@ -82,6 +82,8 @@ export interface Lab {
   /** The dashboard's own steps, when it has them, so plan steps match its steps one to one. */
   knownSteps: string[] | null;
   status: LabStatus;
+  /** Set when the dashboard replaced this code: students already in keep going, new ones can't join. */
+  closed?: boolean;
   plan: LabPlan | null;
   error: string | null;
   createdAt: number;

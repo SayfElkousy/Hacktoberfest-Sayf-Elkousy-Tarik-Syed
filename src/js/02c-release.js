@@ -50,6 +50,17 @@ function isReleased(rule, c, ctx) {
 /* ---------- Student enrollment helpers ---------- */
 const studentEnrollments = (userId) => S.enrollments.filter((e) => e.studentId === userId && classById(e.classId));
 const studentGroup = (classId, periodId, userId) => groupsIn(classId, periodId).find((g) => g.memberIds.includes(userId)) || null;
+/* Session guests: students who joined one live session with its code. They work in
+   a lab group for that session only and are never added to the class roster. */
+const sessionGuest = (sess, userId) => (sess && (sess.guests || []).find((x) => x.studentId === userId)) || null;
+function sessionGroupFor(sess, userId) {
+  const g = studentGroup(sess.classId, sess.periodId, userId); if (g) return g;
+  const guest = sessionGuest(sess, userId); return guest ? groupById(guest.groupId) : null;
+}
+const sessionMemberIds = (sess, g) => (g ? [...g.memberIds, ...(sess && sess.guests || []).filter((x) => x.groupId === g.id && !g.memberIds.includes(x.studentId)).map((x) => x.studentId)] : []);
+function sessionMemberNames(sess, g, markGuests = false) {
+  return sessionMemberIds(sess, g).map((id) => { const name = (studentById(id) || {}).name || displayName(S.users.find((u) => u.id === id)); return markGuests && !g.memberIds.includes(id) ? `${name} (guest)` : name; });
+}
 const sessionForPeriod = (a, periodId) => S.sessions.find((s) => s.assignmentId === a.id && s.periodId === periodId) || null;
 function scheduledAt(a) {
   const t = a.scheduledTime || '08:00';
@@ -98,16 +109,19 @@ function sectionHasContent(c, k) {
  * Build the student projection of an assigned lab.
  * @param preview  teacher "Preview as Student": {status, done:Set<stepId>} replaces live session data.
  */
-function studentLabView(a, userId, preview = null) {
+function studentLabView(a, userId, preview = null, forSess = null) {
   const lab = labById(a.labId); if (!lab) return null;
   const v = versionById(lab, a.versionId); if (!v) return null;
   const c = v.content; const rel = releaseOf(lab);
   const cls = classById(a.classId);
-  const enr = preview ? null : S.enrollments.find((e) => e.studentId === userId && e.classId === a.classId && a.periodIds.includes(e.periodId));
-  if (!preview && (!enr || a.published === false)) return null; // not enrolled in an assigned period, or not published
-  const periodId = preview ? (preview.periodId || a.periodIds[0]) : enr.periodId;
-  const sess = preview ? null : sessionForPeriod(a, periodId);
-  const group = preview ? null : studentGroup(a.classId, periodId, userId);
+  const enrAny = preview ? null : S.enrollments.find((e) => e.studentId === userId && e.classId === a.classId && a.periodIds.includes(e.periodId));
+  // Asked about one session: only an enrollment in that session's period counts. Otherwise guest access from its code.
+  const enr = forSess && enrAny && enrAny.periodId !== forSess.periodId ? null : enrAny;
+  const guestSess = preview || enr ? null : forSess ? (sessionGuest(forSess, userId) ? forSess : null) : S.sessions.find((s) => s.assignmentId === a.id && sessionGuest(s, userId)) || null;
+  if (!preview && ((!enr && !guestSess) || a.published === false)) return null; // not enrolled or a guest, or not published
+  const periodId = preview ? (preview.periodId || a.periodIds[0]) : enr ? enr.periodId : guestSess.periodId;
+  const sess = preview ? null : enr ? sessionForPeriod(a, periodId) : guestSess;
+  const group = preview ? null : sess ? sessionGroupFor(sess, userId) : studentGroup(a.classId, periodId, userId);
   const p = sess && group ? S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id) : null;
   const ctx = preview
     ? { status: preview.status, open: preview.status !== 'scheduled', done: preview.done || new Set() }
@@ -121,7 +135,7 @@ function studentLabView(a, userId, preview = null) {
     title: c.title, description: c.description || '', subject: c.subject,
     scheduledFor: a.scheduledFor, scheduledTime: a.scheduledTime || '', autoOpen: !!a.autoOpen,
     durationMin: plannedMinutes(c), status, acknowledgment: c.acknowledgment || '', revisit: !!rel.revisit,
-    group: group ? { id: group.id, name: group.name, members: memberNames(group) } : null,
+    group: group ? { id: group.id, name: group.name, members: sess ? sessionMemberNames(sess, group) : memberNames(group) } : null, guest: !preview && !enr,
     stepCount: c.steps.length, sections: {}, locked: [], procedure: null,
   };
   const released = (k) => !afterRevisitBlocked && isReleased(rel[k], c, ctx);

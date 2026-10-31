@@ -56,11 +56,15 @@ export function listLabs(): Lab[] {
   return [...labs.values()];
 }
 
-/** The newest lab for a code, ignoring case, since students type these by hand. */
+/** Codes are typed by hand, so case, spaces and dashes don't matter: k7q m4x finds K7Q-M4X. */
+export const normalizeCode = (code: string): string => code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/** The newest lab for a code. */
 export function findLabByCode(code: string): Lab | undefined {
-  const wanted = code.trim().toUpperCase();
+  const wanted = normalizeCode(code);
+  if (!wanted) return undefined;
   return [...labs.values()]
-    .filter((lab) => lab.code.toUpperCase() === wanted)
+    .filter((lab) => normalizeCode(lab.code) === wanted)
     .sort((a, b) => b.createdAt - a.createdAt)[0];
 }
 

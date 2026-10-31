@@ -15,14 +15,14 @@ function liveModel() {
   if (L.kind === 'class') {
     const auth = LabSessionAPI.authorize(me_, L.id);
     if (!auth.sess || (!auth.ok && auth.code !== 'not_open')) return { error: auth };
-    const a = auth.a; const v = studentLabView(a, me_);
+    const a = auth.a; const v = studentLabView(a, me_, null, auth.sess);
     if (!v) return { error: { code: 'not_found', message: 'This lab isn’t available to you.' } };
     const t = classTrack(auth.sess, auth.group.id); ensureProgressShape(t.p);
     const sc = sessionContent(auth.sess);
     return { kind: 'class', auth, v, t, sess: auth.sess, title: v.title, sub: `${v.className} · ${v.periodName}`, groupName: auth.group.name, members: v.group.members,
       steps: v.procedure ? v.procedure.steps : [], released: v.procedure ? v.procedure.checkpoints : [], placement: sc.checkpoints.map((cp) => ({ id: cp.id, afterStepId: cp.afterStepId, blocks: cpBlocks(cp) })),
       readOnly: !!auth.readOnly, open: auth.ok, status: auth.code, ack: v.acknowledgment, precautions: v.sections.precautions || [], level: classById(auth.sess.classId).level,
-      versionId: auth.sess.versionId, canHelp: true, backHref: `#s/lab/${a.id}`, trackKey: auth.sess.id, groupId: auth.group.id };
+      versionId: auth.sess.versionId, canHelp: true, backHref: v.guest ? '#s/live' : `#s/lab/${a.id}`, trackKey: auth.sess.id, groupId: auth.group.id };
   }
   const run = runById(L.id); const role = run ? runRole(run, me_) : null;
   if (!run || !atLeast(role, 'contributor')) return { error: { code: 'not_allowed', message: 'You don’t have access to run this experiment.' } };
@@ -249,7 +249,7 @@ function liveCodeForm() {
   const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
   return html`<form class="card card-pad stack" data-submit="live-code" novalidate style="margin-bottom:22px;max-width:720px">
     <h2>Enter a live session code</h2>
-    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to your group’s session.</p>
+    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to the session. You don’t need to be in the class.</p>
     <div class="row wrap" style="align-items:flex-end">
       ${field({ label: 'Live session code', id: 'lc-code', bind: 'ui.liveCodeDraft.code', value: d.code, cls: 'grow', attrs: 'autocomplete="off" autocapitalize="characters" spellcheck="false" style="font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;max-width:220px"', error: d.error })}
       <button class="btn btn-primary" type="submit">${icon('arrowRight')}Join session</button>
@@ -293,6 +293,8 @@ function liveLobby(m) {
       ${m.precautions.length && m.status !== 'completed' ? html`<div class="panel stack tight"><strong class="row">${icon('alert', 'sm')}Before you start</strong><ul class="ul-plain small">${m.precautions.map((x) => html`<li>${x}</li>`)}</ul></div>` : ''}
       ${m.ack && m.status !== 'completed' ? html`<label class="check" for="live-ack"><input type="checkbox" id="live-ack" data-bind="liveState.${`${L.kind}:${L.id}|${S.currentUserId}`.replace(/\./g, '_')}.ack" data-type="bool"${attr(prefs.ack, 'checked')} data-change="live-ack"><span><strong>Required by your teacher:</strong> ${m.ack}</span></label>` : ''}
       ${L.msg ? html`<div class="err" role="alert">${icon('alert', 'sm')}${L.msg}</div>` : ''}
+      ${m.kind === 'class' && m.status !== 'completed' && StudentSite.studentLink(m.sess.liveCode) ? html`<div class="panel row between wrap"><div class="stack tight"><strong class="row">${icon('eye', 'sm')}Lab assistant</strong><span class="small muted">Step-by-step help that talks you through the lab and checks your work with your webcam. Your progress still reaches your teacher.</span></div>
+        <a class="btn" href="${StudentSite.studentLink(m.sess.liveCode)}" target="_blank" rel="noopener">${icon('arrowRight', 'sm')}Open the lab assistant</a></div>` : ''}
       <div class="row wrap">
         <button class="btn btn-primary btn-lg" data-action="live-enter"${attr(m.status === 'not_open' || offline, 'disabled')}>${icon(m.status === 'completed' ? 'eye' : 'arrowRight')}${m.status === 'completed' ? 'Review session' : m.status === 'paused' ? 'Enter (read only)' : started ? 'Resume session' : 'Enter session'}</button>
         <a class="btn btn-ghost" href="${m.backHref}">Back to lab</a></div>

@@ -1,6 +1,6 @@
 # Labby — teacher dashboard prototype (phase 1)
 
-The student side lives in [`student assistant/`](student%20assistant/README.md): students join with the class code and are guided through the lab by a local Gemma 4 model, with each lab group's progress flowing into Live Progress. Connect the two under Settings → Student site (see `src/js/85-student-site.js`).
+The student side lives in [`student assistant/`](student%20assistant/README.md): students join with the live session code shown in Live Progress (they don't need to be in the class) and are guided through the lab by a local Gemma 4 model, with each lab group's progress flowing into Live Progress. Connect the two under Settings → Student site (see `src/js/85-student-site.js`).
 
 A working, clickable prototype of Labby's website: account creation with role selection, simple student/independent placeholder pages, and the full teacher flow:
 
@@ -40,7 +40,7 @@ Open `dist/labby.html` in a browser to run it (PDF import needs an internet conn
 2. A database for classes, enrollments, groups, labs and versions, sessions, progress and help requests (the shapes are documented at the top of `02-models.js`).
 3. Server-side permission checks: teachers only see their own classes, students, sessions and help requests; a class code only grants enrollment.
 4. A join-code endpoint for students (code → choose period → enroll).
-   A live-session-code endpoint too (code → enroll in that period if needed → place in a lab group → open the session). The browser version is `LabSessionAPI.joinByCode` in `07-session-api.js`.
+   A live-session-code endpoint too (code → place a student without a group in that session's smallest lab group as a guest → open the session). It never adds them to the class roster. The browser version is `LabSessionAPI.joinByCode` in `07-session-api.js`.
 5. A realtime channel so student devices send step progress, measurements, checkpoints and help requests, and the teacher view updates instantly.
 6. An AI planning endpoint with your own API key, plus server-side PDF/DOCX parsing (including scanned PDFs via OCR) and file storage for originals.
 

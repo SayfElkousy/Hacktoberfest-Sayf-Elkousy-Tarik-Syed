@@ -1465,6 +1465,17 @@ function isReleased(rule, c, ctx) {
 /* ---------- Student enrollment helpers ---------- */
 const studentEnrollments = (userId) => S.enrollments.filter((e) => e.studentId === userId && classById(e.classId));
 const studentGroup = (classId, periodId, userId) => groupsIn(classId, periodId).find((g) => g.memberIds.includes(userId)) || null;
+/* Session guests: students who joined one live session with its code. They work in
+   a lab group for that session only and are never added to the class roster. */
+const sessionGuest = (sess, userId) => (sess && (sess.guests || []).find((x) => x.studentId === userId)) || null;
+function sessionGroupFor(sess, userId) {
+  const g = studentGroup(sess.classId, sess.periodId, userId); if (g) return g;
+  const guest = sessionGuest(sess, userId); return guest ? groupById(guest.groupId) : null;
+}
+const sessionMemberIds = (sess, g) => (g ? [...g.memberIds, ...(sess && sess.guests || []).filter((x) => x.groupId === g.id && !g.memberIds.includes(x.studentId)).map((x) => x.studentId)] : []);
+function sessionMemberNames(sess, g, markGuests = false) {
+  return sessionMemberIds(sess, g).map((id) => { const name = (studentById(id) || {}).name || displayName(S.users.find((u) => u.id === id)); return markGuests && !g.memberIds.includes(id) ? `${name} (guest)` : name; });
+}
 const sessionForPeriod = (a, periodId) => S.sessions.find((s) => s.assignmentId === a.id && s.periodId === periodId) || null;
 function scheduledAt(a) {
   const t = a.scheduledTime || '08:00';
@@ -1513,16 +1524,19 @@ function sectionHasContent(c, k) {
  * Build the student projection of an assigned lab.
  * @param preview  teacher "Preview as Student": {status, done:Set<stepId>} replaces live session data.
  */
-function studentLabView(a, userId, preview = null) {
+function studentLabView(a, userId, preview = null, forSess = null) {
   const lab = labById(a.labId); if (!lab) return null;
   const v = versionById(lab, a.versionId); if (!v) return null;
   const c = v.content; const rel = releaseOf(lab);
   const cls = classById(a.classId);
-  const enr = preview ? null : S.enrollments.find((e) => e.studentId === userId && e.classId === a.classId && a.periodIds.includes(e.periodId));
-  if (!preview && (!enr || a.published === false)) return null; // not enrolled in an assigned period, or not published
-  const periodId = preview ? (preview.periodId || a.periodIds[0]) : enr.periodId;
-  const sess = preview ? null : sessionForPeriod(a, periodId);
-  const group = preview ? null : studentGroup(a.classId, periodId, userId);
+  const enrAny = preview ? null : S.enrollments.find((e) => e.studentId === userId && e.classId === a.classId && a.periodIds.includes(e.periodId));
+  // Asked about one session: only an enrollment in that session's period counts. Otherwise guest access from its code.
+  const enr = forSess && enrAny && enrAny.periodId !== forSess.periodId ? null : enrAny;
+  const guestSess = preview || enr ? null : forSess ? (sessionGuest(forSess, userId) ? forSess : null) : S.sessions.find((s) => s.assignmentId === a.id && sessionGuest(s, userId)) || null;
+  if (!preview && ((!enr && !guestSess) || a.published === false)) return null; // not enrolled or a guest, or not published
+  const periodId = preview ? (preview.periodId || a.periodIds[0]) : enr ? enr.periodId : guestSess.periodId;
+  const sess = preview ? null : enr ? sessionForPeriod(a, periodId) : guestSess;
+  const group = preview ? null : sess ? sessionGroupFor(sess, userId) : studentGroup(a.classId, periodId, userId);
   const p = sess && group ? S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id) : null;
   const ctx = preview
     ? { status: preview.status, open: preview.status !== 'scheduled', done: preview.done || new Set() }
@@ -1536,7 +1550,7 @@ function studentLabView(a, userId, preview = null) {
     title: c.title, description: c.description || '', subject: c.subject,
     scheduledFor: a.scheduledFor, scheduledTime: a.scheduledTime || '', autoOpen: !!a.autoOpen,
     durationMin: plannedMinutes(c), status, acknowledgment: c.acknowledgment || '', revisit: !!rel.revisit,
-    group: group ? { id: group.id, name: group.name, members: memberNames(group) } : null,
+    group: group ? { id: group.id, name: group.name, members: sess ? sessionMemberNames(sess, group) : memberNames(group) } : null, guest: !preview && !enr,
     stepCount: c.steps.length, sections: {}, locked: [], procedure: null,
   };
   const released = (k) => !afterRevisitBlocked && isReleased(rel[k], c, ctx);
@@ -3244,7 +3258,7 @@ function classTrack(sess, groupId) {
   const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === groupId);
   if (!p) return null;
   const g = groupById(groupId);
-  return { kind: 'class', key: sess.id, sess, p, c: sessionContent(sess), groupId, versionId: sess.versionId, members: g ? g.memberIds : [], open: sess.status === 'active' };
+  return { kind: 'class', key: sess.id, sess, p, c: sessionContent(sess), groupId, versionId: sess.versionId, members: sessionMemberIds(sess, g), open: sess.status === 'active' };
 }
 function ensureProgressShape(p) {
   p.gates = p.gates || {}; p.joined = p.joined || []; p.aiFlags = p.aiFlags || []; p.guidance = p.guidance || [];
@@ -3409,9 +3423,9 @@ const LabSessionAPI = {
     if (!sess) return { ok: false, code: 'not_found', message: 'This lab session doesn’t exist.' };
     const a = S.assignments.find((x) => x.id === sess.assignmentId);
     const enr = S.enrollments.find((e) => e.studentId === userId && e.classId === sess.classId && e.periodId === sess.periodId);
-    if (!enr) return { ok: false, code: 'not_enrolled', message: 'You aren’t enrolled in the class period this session belongs to.' };
+    if (!enr && !sessionGuest(sess, userId)) return { ok: false, code: 'not_enrolled', message: 'You aren’t part of this session. Enter the live session code your teacher posted to join it.' };
     if (!a || a.published === false) return { ok: false, code: 'not_published', message: 'Your teacher hasn’t published this lab yet.' };
-    const group = studentGroup(sess.classId, sess.periodId, userId);
+    const group = sessionGroupFor(sess, userId);
     if (!group) return { ok: false, code: 'no_group', message: 'Your teacher hasn’t put you in a lab group yet. Ask them to add you to a group.' };
     if (sess.status === 'completed') return { ok: true, code: 'completed', readOnly: true, sess, a, group, message: 'This session is complete.' };
     if (sess.status === 'paused') return { ok: true, code: 'paused', readOnly: true, sess, a, group, message: 'Your teacher paused the session.' };
@@ -3435,10 +3449,11 @@ const LabSessionAPI = {
     return { ...auth, track: t };
   },
   /**
-   * A student types the live session code their teacher posted. A valid code
-   * enrolls them in that class period and puts them in a lab group when they
-   * aren't in one yet, so they can go straight to the session. In production
-   * this is a rate-limited server endpoint.
+   * A student types the live session code their teacher posted. The code is
+   * enough on its own: students who aren't in the class (or are in another
+   * period) join as guests of this one session, placed in its smallest lab
+   * group. Nothing is added to the class roster. In production this is a
+   * rate-limited server endpoint.
    */
   joinByCode({ participantId, code }) {
     const c = normCode(code);
@@ -3459,26 +3474,16 @@ const LabSessionAPI = {
     if (cls.teacherId === participantId) return { ok: false, code: 'owner', message: 'You teach this class. Open the session from Live Progress instead.' };
     const a = S.assignments.find((x) => x.id === sess.assignmentId);
     if (!a || a.published === false) return { ok: false, code: 'not_published', message: 'Your teacher hasn’t published this lab yet.' };
-    const enr = S.enrollments.find((e) => e.studentId === participantId && e.classId === sess.classId);
-    if (enr && enr.periodId !== sess.periodId) return { ok: false, code: 'other_period', message: `This session is for ${periodName(cls.id, sess.periodId)}, but you’re enrolled in ${periodName(cls.id, enr.periodId)}. Ask your teacher for your period’s code.` };
-    if (!enr && cls.joinEnabled === false) return { ok: false, code: 'joining_off', message: `${cls.name} isn’t accepting new students right now. Ask your teacher to turn joining back on.` };
-    let group = studentGroup(sess.classId, sess.periodId, participantId);
-    if (!group && !groupsIn(sess.classId, sess.periodId).length) return { ok: false, code: 'no_group', message: 'This period has no lab groups yet. Ask your teacher to set them up.' };
-    const added = { enrolled: false, grouped: false };
-    if (!enr) {
-      ensureStudentRecord(user);
-      S.enrollments.push({ id: uid(), classId: cls.id, periodId: sess.periodId, studentId: participantId, joinedAt: Date.now(), via: 'live-code' });
-      added.enrolled = true;
-    }
-    if (!group) {
-      ensureStudentRecord(user);
-      group = [...groupsIn(sess.classId, sess.periodId)].sort((x, y) => x.memberIds.length - y.memberIds.length || naturalCmp(x.name, y.name))[0];
-      group.memberIds.push(participantId);
-      added.grouped = true;
-      const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id);
-      if (p) logActivity(p, `${displayName(user)} joined ${group.name} with the live session code`);
-    }
-    return { ok: true, sess, cls, group, ...added };
+    let group = sessionGroupFor(sess, participantId);
+    if (group) return { ok: true, sess, cls, group, guest: !!sessionGuest(sess, participantId), added: false };
+    const groups = groupsIn(sess.classId, sess.periodId);
+    if (!groups.length) return { ok: false, code: 'no_group', message: 'This session has no lab groups yet. Ask your teacher to set them up.' };
+    ensureStudentRecord(user);
+    group = [...groups].sort((x, y) => sessionMemberIds(sess, x).length - sessionMemberIds(sess, y).length || x.name.localeCompare(y.name, undefined, { numeric: true }))[0];
+    sess.guests = [...(sess.guests || []), { studentId: participantId, groupId: group.id, at: Date.now() }];
+    const p = S.progress.find((x) => x.sessionId === sess.id && x.groupId === group.id);
+    if (p) logActivity(p, `${displayName(user)} joined ${group.name} as a guest with the live session code`);
+    return { ok: true, sess, cls, group, guest: true, added: true };
   },
   track(sessionId, groupId) { const s = sessionById(sessionId); return s ? classTrack(s, groupId) : null; },
   write(eventId, t, fn) {
@@ -5328,7 +5333,7 @@ function liveView() {
       <div class="session-head">
         <div class="stack tight" style="min-width:0"><div class="row wrap">${sessionPill(sess.status)}<span class="tag">${icon('lock', 'sm')}Version ${v.number}</span></div>
           <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>
-          ${sess.status === 'active' || sess.status === 'paused' ? html`<div class="row wrap">${liveCodeChip(sess)}${joinCodeChip(cls)}</div><span class="xs muted">Students enter the live session code on their Live Session page to go straight to this lab.</span>`
+          ${sess.status === 'active' || sess.status === 'paused' ? html`<div class="row wrap">${liveCodeChip(sess)}${joinCodeChip(cls)}</div><span class="xs muted">Anyone with the live session code can join this session, even if they aren’t in the class. They enter it on their Live Session page or on the student assistant site.</span>`
             : sess.status === 'scheduled' ? html`${joinCodeChip(cls)}<span class="xs muted">A live session code for students appears when you start the session.</span>` : ''}</div>
         ${sess.status === 'scheduled' ? html`<div class="stack tight" style="align-items:flex-end"><span class="small muted">Scheduled ${sess.scheduledFor === todayISO() ? 'for today' : 'for ' + fmtDate(new Date(sess.scheduledFor + 'T12:00').getTime())} · ${plannedMinutes(c)} min planned</span>
           ${groupsAvailable ? html`<button class="btn btn-primary" data-action="session-start" data-sid="${sess.id}">${icon('play')}Start session</button>`
@@ -5395,7 +5400,7 @@ function groupTile(p, sess, c, gs, now) {
   const cls = { behind: 'st-behind', waiting: 'st-waiting', lost: 'st-lost' }[gs.key] || '';
   return html`<article class="group-tile ${cls} ${U.drawer === p.id ? 'sel' : ''}" data-action="group-open" data-pid="${p.id}" data-key="gt-${p.id}">
     <div class="gt-head"><div class="stack tight" style="min-width:0"><button class="link-btn gt-name" style="text-decoration:none;color:var(--ink)" data-action="group-open" data-pid="${p.id}" aria-label="Open details for ${g.name}">${g.name}</button>
-      <span class="gt-members">${memberNames(g).map((n) => n.split(' ')[0]).join(', ')}</span></div>${groupPill(gs.key)}</div>
+      <span class="gt-members">${sessionMemberNames(sess, g).map((n) => n.split(' ')[0]).join(', ')}</span></div>${groupPill(gs.key)}</div>
     <div class="gt-step">${p.finishedAt ? html`<strong>Finished</strong> at ${fmtClock(p.finishedAt)}` : html`<span class="muted">Step ${p.stepIndex + 1} of ${c.steps.length}</span> · <strong>${step.title}</strong>`}</div>
     <div class="stack tight">${segs(c.steps.length, done, p.stepIndex, !!p.finishedAt, `${done.size} of ${c.steps.length} steps complete`)}<span class="xs muted num">${done.size}/${c.steps.length} steps complete</span></div>
     <div class="gt-meta">
@@ -5420,7 +5425,7 @@ function groupDrawer(pid) {
   const open = help.filter((h) => h.status !== 'resolved');
   return html`<div class="drawer-scrim" data-action="drawer-close" data-key="drawer-scrim"></div>
   <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title" data-key="drawer">
-    <div class="drawer-head"><div class="stack tight grow"><h2 id="dr-title">${g.name}</h2><span class="small muted">${memberNames(g).join(', ')}</span><div>${groupPill(gs.key)}</div></div>
+    <div class="drawer-head"><div class="stack tight grow"><h2 id="dr-title">${g.name}</h2><span class="small muted">${sessionMemberNames(sess, g, true).join(', ')}</span><div>${groupPill(gs.key)}</div></div>
       <button class="btn btn-ghost btn-icon" data-action="drawer-close" aria-label="Close group details">${icon('x')}</button></div>
     <div class="drawer-body">
       <section class="drawer-section"><h3>${p.finishedAt ? 'Finished' : 'Current step'}</h3>
@@ -5481,7 +5486,8 @@ function liveCodeModal() {
         <li><strong>1.</strong> Open Labby and go to <strong>Live Session</strong>.</li>
         <li><strong>2.</strong> Type the code <span class="mono">${sess.liveCode}</span> and choose <strong>Join session</strong>.</li>
         <li><strong>3.</strong> Enter the session with your group and start step 1.</li></ol>
-      <p class="xs muted">Students who aren’t in ${periodName(sess.classId, sess.periodId)} or a lab group yet are added to the period and the smallest group. The code stops working when the session ends.</p></div>`,
+      ${StudentSite.studentAddress() ? html`<div class="panel stack tight" style="max-width:440px;margin:0 auto;text-align:left"><strong class="row">${icon('eye', 'sm')}Lab assistant with camera and voice</strong><span class="small">Or open <span class="mono">${StudentSite.studentAddress()}</span> and enter the same code.</span></div>` : ''}
+      <p class="xs muted">Anyone with this code can join, even if they aren’t in the class. Students without a group here join the smallest lab group as guests for this session only. The code also works on the student assistant site, and it stops working when the session ends.</p></div>`,
     foot: html`<button class="btn" data-action="modal-close">Close</button><button class="btn btn-primary" data-action="copy-live-code" data-sid="${sess.id}">${icon('copy')}Copy code</button>` });
 }
 function liveCodeRegenModal() {
@@ -5640,9 +5646,12 @@ const TEACHER2_CHANGES = {
    Bridge to the Student Assistant site (the "student assistant" folder).
 
    Labby has no server of its own yet, so this runs in the teacher's browser.
-   While a session is active it publishes the lab under the class join code,
+   While a session runs it publishes the lab under the session's live code,
    with the period's lab groups as teams, then reads each team's progress back
    into LabSessionAPI so Live Progress and the Help Queue update for real.
+   Anyone with the live code can join; they don't need to be in the class.
+   A replaced code is closed to new students (those already in keep going),
+   and every code is ended when the session ends.
 
    Everything goes through the session API, so repeats are safe: each write
    has a stable event ID.
@@ -5652,11 +5661,12 @@ const StudentSite = {
   POLL_MS: 3000,
   state: 'off', // off | connected | interrupted
   published: {}, // session id -> what was last sent
+  retired: new Set(), // codes already closed or ended on the student site
   helpOpen: new Set(),
 
   config() {
-    try { return { url: 'http://localhost:8080', token: '', ...JSON.parse(localStorage.getItem(this.KEY) || '{}') }; }
-    catch (e) { return { url: 'http://localhost:8080', token: '' }; }
+    try { return { url: 'http://localhost:8080', token: '', studentUrl: '', ...JSON.parse(localStorage.getItem(this.KEY) || '{}') }; }
+    catch (e) { return { url: 'http://localhost:8080', token: '', studentUrl: '' }; }
   },
   saveConfig(next) {
     try { localStorage.setItem(this.KEY, JSON.stringify(next)); } catch (e) { /* storage unavailable */ }
@@ -5676,18 +5686,37 @@ const StudentSite = {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (!res.ok) throw new Error(`Student site returned ${res.status}`);
+    if (!res.ok) { const e = new Error(`Student site returned ${res.status}`); e.status = res.status; throw e; }
     return res.json();
   },
+  /** Like call, but a code the student site never saw (404) is fine. */
+  async callIfKnown(path, body) {
+    try { return await this.call(path, body); } catch (e) { if (e.status === 404) return null; throw e; }
+  },
 
-  /** The newest active session for each class, since students join by the class code. */
+  /** The address students open, with the live code filled in. Empty when it isn't set up. */
+  studentAddress() { const a = String(this.config().studentUrl || '').trim().replace(/\/+$/, ''); return /^https?:\/\//i.test(a) ? a : ''; },
+  studentLink(code) { const a = this.studentAddress(); return a && code ? `${a}/?code=${encodeURIComponent(code)}` : ''; },
+
+  /** Every running session of the teacher's, each under its own live code. */
   sessions() {
-    const byClass = new Map();
-    S.sessions.filter((s) => s.status === 'active').forEach((s) => {
-      const held = byClass.get(s.classId);
-      if (!held || (s.startedAt || 0) > (held.startedAt || 0)) byClass.set(s.classId, s);
-    });
-    return [...byClass.values()];
+    return S.sessions.filter((s) => (s.status === 'active' || s.status === 'paused') && ensureLiveCode(s));
+  },
+  /** Codes this session used before, which may still have students working under them. */
+  oldCodes(sess) { return (sess.oldLiveCodes || []).filter(Boolean); },
+
+  /** Close replaced codes to new students, and end every code of a finished session. */
+  async retire() {
+    for (const sess of S.sessions) {
+      const ended = sess.status === 'completed';
+      if (ended && Date.now() - (sess.endedAt || 0) > 86400000) continue;
+      for (const code of this.oldCodes(sess)) {
+        const key = `${ended ? 'end' : 'close'}:${code}`;
+        if (this.retired.has(key)) continue;
+        await this.callIfKnown(`/labs/${encodeURIComponent(code)}/${ended ? 'end' : 'close'}`, {});
+        this.retired.add(key);
+      }
+    }
   },
 
   labFor(sess) {
@@ -5701,7 +5730,7 @@ const StudentSite = {
       c.precautions.length ? `Safety: ${c.precautions.join('; ')}` : '',
       ...steps.map((text, i) => `${i + 1}. ${text}`),
     ].filter(Boolean).join('\n');
-    return { code: classById(sess.classId).joinCode, procedure, teams, steps };
+    return { code: sess.liveCode, procedure, teams, steps };
   },
 
   async publish(sess) {
@@ -5772,7 +5801,7 @@ const StudentSite = {
   },
 
   /** Teacher-written checkpoints reach students as questions; their answers go back through the session API. */
-  async runCheckpoint(sess, c, team, code, students) {
+  async runCheckpoint(sess, c, team, codes, students) {
     const t = LabSessionAPI.track(sess.id, team.id);
     const cp = t && t.p.atCheckpoint ? checkpointById(c, t.p.atCheckpoint) : null;
     if (!cp || cp.kind !== 'response' || !cp.questions.length) return false;
@@ -5781,13 +5810,17 @@ const StudentSite = {
     const responses = {};
     for (const q of cp.questions) {
       const key = `${team.id}:${cp.id}:${q.id}`;
-      if (!asked[key]) {
-        const choices = q.type === 'mc' ? ` Choices: ${q.options.map((o) => o.text).join(', ')}.` : '';
-        const { sent } = await this.call(`/labs/${encodeURIComponent(code)}/prompts`, { question: `${q.prompt}${choices}`, teamIds: [team.id] });
-        if (sent.length) { asked[key] = sent.map((s) => s.promptId); this.saveAsked(asked); }
-        continue;
+      const ids = [];
+      for (const code of codes) {
+        const codeKey = `${code}:${key}`;
+        if (!asked[codeKey]) {
+          const choices = q.type === 'mc' ? ` Choices: ${q.options.map((o) => o.text).join(', ')}.` : '';
+          const r = await this.callIfKnown(`/labs/${encodeURIComponent(code)}/prompts`, { question: `${q.prompt}${choices}`, teamIds: [team.id] });
+          if (r && r.sent.length) { asked[codeKey] = r.sent.map((s) => s.promptId); this.saveAsked(asked); }
+        }
+        ids.push(...(asked[codeKey] || []));
       }
-      const reply = students.flatMap((s) => s.answers).find((a) => asked[key].includes(a.promptId));
+      const reply = students.flatMap((s) => s.answers).find((a) => ids.includes(a.promptId));
       if (!reply) continue;
       if (q.type === 'mc') {
         const said = reply.answer.toLowerCase();
@@ -5808,17 +5841,24 @@ const StudentSite = {
     if (typeof S === 'undefined' || !S || !this.config().token) { this.state = 'off'; return; }
     try {
       let changed = false;
+      await this.retire();
       for (const sess of this.sessions()) {
         const c = sessionContent(sess);
         if (!c || !c.steps.length) continue;
         const code = await this.publish(sess);
-        const { lab, students, teams } = await this.call(`/labs/${encodeURIComponent(code)}`);
-        if (!lab.plan) continue;
-        for (const team of teams) {
-          if (!groupById(team.id)) continue;
-          const members = students.filter((s) => s.teamId === team.id);
+        // Students who joined under a replaced code keep working, so read those labs too.
+        const reads = [];
+        for (const k of [code, ...this.oldCodes(sess)]) { const r = await this.callIfKnown(`/labs/${encodeURIComponent(k)}`); if (r && r.lab && r.lab.plan) reads.push({ code: k, ...r }); }
+        const students = reads.flatMap((r) => r.students);
+        const teamIds = new Set(reads.flatMap((r) => r.teams.map((t) => t.id)));
+        for (const id of teamIds) {
+          if (!groupById(id)) continue;
+          const parts = reads.flatMap((r) => r.teams.filter((t) => t.id === id));
+          const team = { ...parts[0], stepsDone: Math.max(...parts.map((t) => t.stepsDone || 0)), online: parts.reduce((n, t) => n + (t.online || 0), 0) };
+          const members = students.filter((s) => s.teamId === id);
           if (this.applyTeam(sess, c, team, members)) changed = true;
-          if (await this.runCheckpoint(sess, c, team, code, members)) changed = true;
+          const codes = reads.filter((r) => r.students.some((s) => s.teamId === id)).map((r) => r.code);
+          if (await this.runCheckpoint(sess, c, team, codes.length ? codes : [code], members)) changed = true;
         }
       }
       this.state = 'connected';
@@ -5835,15 +5875,16 @@ const StudentSite = {
   },
 
   card() {
-    const { url, token } = this.config();
+    const { url, token, studentUrl } = this.config();
     const label = { off: 'Not connected', connected: 'Connected', interrupted: 'Connection interrupted' }[this.state];
     const live = this.sessions();
     return html`<section class="card card-pad stack" aria-labelledby="ss-h">
       <div class="row between"><h2 id="ss-h">Student site</h2><span class="hint">${label}</span></div>
-      <p class="small muted">Students join with the class code. Each lab group’s progress then appears in Live Progress and the Help Queue while a session is active.</p>
+      <p class="small muted">Students open the student site and enter the live session code from Live Progress. They don’t need to be in the class. Each lab group’s progress then appears in Live Progress and the Help Queue while the session runs.</p>
       <div class="form-grid">
         <div class="field"><label class="label" for="ss-url">Address</label><input class="input" id="ss-url" value="${url}"></div>
         <div class="field"><label class="label" for="ss-token">Dashboard token</label><input class="input" id="ss-token" type="password" autocomplete="off" value="${token}"><span class="hint">Printed when the student site’s server starts.</span></div>
+        <div class="field"><label class="label" for="ss-student-url">Address students open <span class="opt">(optional)</span></label><input class="input" id="ss-student-url" placeholder="https://192.168.1.20:8443" value="${studentUrl}"><span class="hint">The https:// address the server printed for students. Labby shows it with the live session code and gives students a button that opens it with the code filled in.</span></div>
       </div>
       <div><button class="btn btn-primary" data-action="site-save">Save connection</button></div>
       ${live.length ? html`<div class="field"><label class="label" for="ss-question">Ask active classes a question</label><input class="input" id="ss-question" placeholder="Leave blank to have Gemma write one"></div>
@@ -5853,13 +5894,13 @@ const StudentSite = {
 
   actions: {
     'site-save': () => {
-      StudentSite.saveConfig({ url: document.getElementById('ss-url').value.trim(), token: document.getElementById('ss-token').value.trim() });
+      StudentSite.saveConfig({ url: document.getElementById('ss-url').value.trim(), token: document.getElementById('ss-token').value.trim(), studentUrl: document.getElementById('ss-student-url').value.trim() });
       StudentSite.tick().then(() => { toast(StudentSite.state === 'connected' ? 'Connected to the student site.' : 'Couldn’t reach the student site. Check the address and token.', StudentSite.state === 'connected' ? 'check' : 'alert'); commit(); });
     },
     'site-ask': async () => {
       const question = document.getElementById('ss-question').value.trim();
       try {
-        for (const sess of StudentSite.sessions()) await StudentSite.call(`/labs/${encodeURIComponent(classById(sess.classId).joinCode)}/prompts`, { question });
+        for (const sess of StudentSite.sessions()) await StudentSite.callIfKnown(`/labs/${encodeURIComponent(sess.liveCode)}/prompts`, { question });
         toast('Question sent to students.', 'check');
       } catch (e) { toast('Couldn’t reach the student site.', 'alert'); }
     },
@@ -5929,7 +5970,7 @@ function helpItem(h, pos) {
     </div>
     ${expanded ? html`<div class="hq-detail">
       <div class="stack tight"><span class="eyebrow">Step ${h.stepIndex + 1} instructions</span><span class="small">${step ? step.instructions : 'Step not found.'}</span>
-        <span class="eyebrow" style="margin-top:8px">Group</span><span class="small">${memberNames(g).join(', ')}</span>
+        <span class="eyebrow" style="margin-top:8px">Group</span><span class="small">${sessionMemberNames(sess, g, true).join(', ')}</span>
         ${sess.status !== 'scheduled' ? html`<button class="link-btn small" style="align-self:flex-start" data-action="help-open-group" data-hid="${h.id}">Open ${groupLabel(g)} in Live Progress</button>` : ''}</div>
       <div class="stack tight"><span class="eyebrow">History</span><ul class="timeline">${h.log.map((l) => html`<li><span class="xs muted mono">${fmtClock(l.at)}</span><span class="small">${l.text}</span></li>`)}</ul></div>
     </div>` : ''}
@@ -6165,7 +6206,14 @@ function confirmJoin() {
 
 /* ---------- Lab cards and pages ---------- */
 function studentLabsFor(uid, classFilter = '') {
-  return studentAssignments(uid).filter((x) => !classFilter || x.e.id === classFilter).map((x) => ({ ...x, view: studentLabView(x.a, uid) })).filter((x) => x.view);
+  const mine = studentAssignments(uid).filter((x) => !classFilter || x.e.id === classFilter).map((x) => ({ ...x, view: studentLabView(x.a, uid) })).filter((x) => x.view);
+  if (classFilter) return mine;
+  // Sessions joined as a guest with a live session code, for classes the student isn't in.
+  const guest = S.sessions.filter((s) => s.status !== 'completed' && sessionGuest(s, uid) && !mine.some((x) => x.view.sessionId === s.id)).map((s) => {
+    const a = S.assignments.find((x) => x.id === s.assignmentId); const view = a ? studentLabView(a, uid, null, s) : null;
+    return view ? { a, e: null, sess: s, view } : null;
+  }).filter(Boolean);
+  return [...mine, ...guest];
 }
 const studentPill = (k) => pill(STUDENT_LAB_STATUS[k]);
 function sessionLine(v) {
@@ -6182,7 +6230,7 @@ function labCard(x) {
     ${v.description ? html`<p class="small">${v.description}</p>` : ''}
     <div class="row wrap small" style="gap:6px 14px"><span>${icon('calendar', 'sm')} ${fmtSchedule({ scheduledFor: v.scheduledFor, scheduledTime: v.scheduledTime })}</span><span>${icon('clock', 'sm')} About ${v.durationMin} min</span></div>
     ${prep && prep.length ? html`<div class="next-lab"><span class="eyebrow">Prepare</span><span class="small">${prep[0]}${prep.length > 1 ? ` (+${prep.length - 1} more)` : ''}</span></div>` : ''}
-    <span class="xs muted">${sessionLine(v)}</span>
+    <span class="xs muted">${sessionLine(v)}${v.guest ? ' · Joined with a live session code' : ''}</span>
     <div class="row wrap"><a class="btn btn-sm" href="#s/lab/${v.assignmentId}">View lab</a>
       ${v.status === 'ready' || v.status === 'inprogress' ? html`<a class="btn btn-sm btn-primary" href="#s/live/${v.sessionId}">${icon('activity', 'sm')}${v.status === 'inprogress' ? 'Resume' : 'Enter'} Live Session</a>` : ''}</div>
   </article>`;
@@ -6197,7 +6245,7 @@ function studentOverview() {
   const u = me(); const enr = studentEnrollments(u.id);
   const intro = html`<div class="page-intro"><div class="stack tight"><p class="eyebrow">${fmtDateLong(Date.now())}</p><h2 style="font-size:1.45rem">${greeting()}, ${displayName(u)}.</h2></div>
     <div class="row wrap"><a class="btn btn-primary" href="#s/live">${icon('activity')}Join Live Session</a><a class="btn" href="#s/join">${icon('key')}Join a class</a></div></div>`;
-  if (!enr.length) return html`${intro}<div class="card">${emptyState({ ico: 'key', title: 'Join your first class', text: 'Ask your teacher for the class code or join link. Once you join, your labs show up here.', actions: html`<a class="btn btn-primary" href="#s/join">${icon('key')}Join a class</a>` })}</div>`;
+  if (!enr.length && !studentLabsFor(u.id).length) return html`${intro}<div class="card">${emptyState({ ico: 'key', title: 'Join your first class', text: 'Ask your teacher for the class code or join link. Once you join, your labs show up here.', actions: html`<a class="btn btn-primary" href="#s/join">${icon('key')}Join a class</a>` })}</div>`;
   const labs = studentLabsFor(u.id, S.ui.sClass);
   const live = labs.filter((x) => x.view.status === 'ready' || x.view.status === 'inprogress');
   const upcoming = labs.filter((x) => x.view.status === 'upcoming' || x.view.status === 'prepare').sort((a, b) => scheduledAt(a.a) - scheduledAt(b.a));
@@ -6395,7 +6443,7 @@ const STUDENT_SUBMITS = {
     const u = me(); if (u) u.lastWorkspace = 'student';
     commit(); go(`s/live/${res.sess.id}`);
     const where = `${res.cls.name} · ${periodName(res.cls.id, res.sess.periodId)}`;
-    toast(res.enrolled ? `You joined ${where} and ${res.group.name}. Enter the session when your group is ready.` : res.grouped ? `You were added to ${res.group.name}. Enter the session when your group is ready.` : `Found your session: ${sessionContent(res.sess).title}.`, 'checkCircle');
+    toast(res.added ? `You joined ${where} as a guest, in ${res.group.name}. Enter the session when your group is ready.` : `Found your session: ${sessionContent(res.sess).title}.`, 'checkCircle');
   },
   'join-lookup': () => { const d = S.ui.joinDraft; d.code = normCode(d.code); d.looked = true; d.periodId = ''; d.linkPeriod = ''; d.fromLink = d.fromLink || ''; d.periodError = ''; commit(); },
 };
@@ -6417,14 +6465,14 @@ function liveModel() {
   if (L.kind === 'class') {
     const auth = LabSessionAPI.authorize(me_, L.id);
     if (!auth.sess || (!auth.ok && auth.code !== 'not_open')) return { error: auth };
-    const a = auth.a; const v = studentLabView(a, me_);
+    const a = auth.a; const v = studentLabView(a, me_, null, auth.sess);
     if (!v) return { error: { code: 'not_found', message: 'This lab isn’t available to you.' } };
     const t = classTrack(auth.sess, auth.group.id); ensureProgressShape(t.p);
     const sc = sessionContent(auth.sess);
     return { kind: 'class', auth, v, t, sess: auth.sess, title: v.title, sub: `${v.className} · ${v.periodName}`, groupName: auth.group.name, members: v.group.members,
       steps: v.procedure ? v.procedure.steps : [], released: v.procedure ? v.procedure.checkpoints : [], placement: sc.checkpoints.map((cp) => ({ id: cp.id, afterStepId: cp.afterStepId, blocks: cpBlocks(cp) })),
       readOnly: !!auth.readOnly, open: auth.ok, status: auth.code, ack: v.acknowledgment, precautions: v.sections.precautions || [], level: classById(auth.sess.classId).level,
-      versionId: auth.sess.versionId, canHelp: true, backHref: `#s/lab/${a.id}`, trackKey: auth.sess.id, groupId: auth.group.id };
+      versionId: auth.sess.versionId, canHelp: true, backHref: v.guest ? '#s/live' : `#s/lab/${a.id}`, trackKey: auth.sess.id, groupId: auth.group.id };
   }
   const run = runById(L.id); const role = run ? runRole(run, me_) : null;
   if (!run || !atLeast(role, 'contributor')) return { error: { code: 'not_allowed', message: 'You don’t have access to run this experiment.' } };
@@ -6651,7 +6699,7 @@ function liveCodeForm() {
   const d = S.ui.liveCodeDraft || (S.ui.liveCodeDraft = { code: '', error: '' });
   return html`<form class="card card-pad stack" data-submit="live-code" novalidate style="margin-bottom:22px;max-width:720px">
     <h2>Enter a live session code</h2>
-    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to your group’s session.</p>
+    <p class="muted small">When your teacher starts the lab, they post a code like <span class="mono">K7Q-M4X</span>. Enter it to go straight to the session. You don’t need to be in the class.</p>
     <div class="row wrap" style="align-items:flex-end">
       ${field({ label: 'Live session code', id: 'lc-code', bind: 'ui.liveCodeDraft.code', value: d.code, cls: 'grow', attrs: 'autocomplete="off" autocapitalize="characters" spellcheck="false" style="font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;max-width:220px"', error: d.error })}
       <button class="btn btn-primary" type="submit">${icon('arrowRight')}Join session</button>
@@ -6695,6 +6743,8 @@ function liveLobby(m) {
       ${m.precautions.length && m.status !== 'completed' ? html`<div class="panel stack tight"><strong class="row">${icon('alert', 'sm')}Before you start</strong><ul class="ul-plain small">${m.precautions.map((x) => html`<li>${x}</li>`)}</ul></div>` : ''}
       ${m.ack && m.status !== 'completed' ? html`<label class="check" for="live-ack"><input type="checkbox" id="live-ack" data-bind="liveState.${`${L.kind}:${L.id}|${S.currentUserId}`.replace(/\./g, '_')}.ack" data-type="bool"${attr(prefs.ack, 'checked')} data-change="live-ack"><span><strong>Required by your teacher:</strong> ${m.ack}</span></label>` : ''}
       ${L.msg ? html`<div class="err" role="alert">${icon('alert', 'sm')}${L.msg}</div>` : ''}
+      ${m.kind === 'class' && m.status !== 'completed' && StudentSite.studentLink(m.sess.liveCode) ? html`<div class="panel row between wrap"><div class="stack tight"><strong class="row">${icon('eye', 'sm')}Lab assistant</strong><span class="small muted">Step-by-step help that talks you through the lab and checks your work with your webcam. Your progress still reaches your teacher.</span></div>
+        <a class="btn" href="${StudentSite.studentLink(m.sess.liveCode)}" target="_blank" rel="noopener">${icon('arrowRight', 'sm')}Open the lab assistant</a></div>` : ''}
       <div class="row wrap">
         <button class="btn btn-primary btn-lg" data-action="live-enter"${attr(m.status === 'not_open' || offline, 'disabled')}>${icon(m.status === 'completed' ? 'eye' : 'arrowRight')}${m.status === 'completed' ? 'Review session' : m.status === 'paused' ? 'Enter (read only)' : started ? 'Resume session' : 'Enter session'}</button>
         <a class="btn btn-ghost" href="${m.backHref}">Back to lab</a></div>

@@ -73,7 +73,7 @@ export function JoinScreen({ onJoined }: { onJoined: (session: StudentSession) =
           </fieldset>
         ) : (
           <>
-            <p className="join-lead">Enter your name and the class code from your teacher. Turn your speakers on, and your webcam if you have one.</p>
+            <p className="join-lead">Enter your name and the live session code your teacher posted. Turn your speakers on, and your webcam if you have one.</p>
 
             <label>
               Your name
@@ -81,7 +81,7 @@ export function JoinScreen({ onJoined }: { onJoined: (session: StudentSession) =
             </label>
 
             <label>
-              Class code
+              Live session code
               <input
                 className="code-input"
                 value={code}

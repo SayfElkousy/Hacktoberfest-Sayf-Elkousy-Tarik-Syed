@@ -152,6 +152,13 @@ dashboardRoutes.post('/labs/:id/students/:studentId/resolve', (req, res) => {
   res.json({ ok: true });
 });
 
+/** Stops new students joining with this code. Students already in keep working. */
+dashboardRoutes.post('/labs/:id/close', (req, res) => {
+  const lab = labFor(req);
+  if (!lab.closed) saveLab({ ...lab, closed: true });
+  res.json({ ok: true });
+});
+
 dashboardRoutes.post('/labs/:id/end', (req, res) => {
   const lab = labFor(req);
   saveLab({ ...lab, status: 'ended' });

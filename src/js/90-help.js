@@ -60,7 +60,7 @@ function helpItem(h, pos) {
     </div>
     ${expanded ? html`<div class="hq-detail">
       <div class="stack tight"><span class="eyebrow">Step ${h.stepIndex + 1} instructions</span><span class="small">${step ? step.instructions : 'Step not found.'}</span>
-        <span class="eyebrow" style="margin-top:8px">Group</span><span class="small">${memberNames(g).join(', ')}</span>
+        <span class="eyebrow" style="margin-top:8px">Group</span><span class="small">${sessionMemberNames(sess, g, true).join(', ')}</span>
         ${sess.status !== 'scheduled' ? html`<button class="link-btn small" style="align-self:flex-start" data-action="help-open-group" data-hid="${h.id}">Open ${groupLabel(g)} in Live Progress</button>` : ''}</div>
       <div class="stack tight"><span class="eyebrow">History</span><ul class="timeline">${h.log.map((l) => html`<li><span class="xs muted mono">${fmtClock(l.at)}</span><span class="small">${l.text}</span></li>`)}</ul></div>
     </div>` : ''}

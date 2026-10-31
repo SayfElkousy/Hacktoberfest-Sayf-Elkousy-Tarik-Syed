@@ -2,9 +2,12 @@
    Bridge to the Student Assistant site (the "student assistant" folder).
 
    Labby has no server of its own yet, so this runs in the teacher's browser.
-   While a session is active it publishes the lab under the class join code,
+   While a session runs it publishes the lab under the session's live code,
    with the period's lab groups as teams, then reads each team's progress back
    into LabSessionAPI so Live Progress and the Help Queue update for real.
+   Anyone with the live code can join; they don't need to be in the class.
+   A replaced code is closed to new students (those already in keep going),
+   and every code is ended when the session ends.
 
    Everything goes through the session API, so repeats are safe: each write
    has a stable event ID.
@@ -14,11 +17,12 @@ const StudentSite = {
   POLL_MS: 3000,
   state: 'off', // off | connected | interrupted
   published: {}, // session id -> what was last sent
+  retired: new Set(), // codes already closed or ended on the student site
   helpOpen: new Set(),
 
   config() {
-    try { return { url: 'http://localhost:8080', token: '', ...JSON.parse(localStorage.getItem(this.KEY) || '{}') }; }
-    catch (e) { return { url: 'http://localhost:8080', token: '' }; }
+    try { return { url: 'http://localhost:8080', token: '', studentUrl: '', ...JSON.parse(localStorage.getItem(this.KEY) || '{}') }; }
+    catch (e) { return { url: 'http://localhost:8080', token: '', studentUrl: '' }; }
   },
   saveConfig(next) {
     try { localStorage.setItem(this.KEY, JSON.stringify(next)); } catch (e) { /* storage unavailable */ }
@@ -38,18 +42,37 @@ const StudentSite = {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (!res.ok) throw new Error(`Student site returned ${res.status}`);
+    if (!res.ok) { const e = new Error(`Student site returned ${res.status}`); e.status = res.status; throw e; }
     return res.json();
   },
+  /** Like call, but a code the student site never saw (404) is fine. */
+  async callIfKnown(path, body) {
+    try { return await this.call(path, body); } catch (e) { if (e.status === 404) return null; throw e; }
+  },
 
-  /** The newest active session for each class, since students join by the class code. */
+  /** The address students open, with the live code filled in. Empty when it isn't set up. */
+  studentAddress() { const a = String(this.config().studentUrl || '').trim().replace(/\/+$/, ''); return /^https?:\/\//i.test(a) ? a : ''; },
+  studentLink(code) { const a = this.studentAddress(); return a && code ? `${a}/?code=${encodeURIComponent(code)}` : ''; },
+
+  /** Every running session of the teacher's, each under its own live code. */
   sessions() {
-    const byClass = new Map();
-    S.sessions.filter((s) => s.status === 'active').forEach((s) => {
-      const held = byClass.get(s.classId);
-      if (!held || (s.startedAt || 0) > (held.startedAt || 0)) byClass.set(s.classId, s);
-    });
-    return [...byClass.values()];
+    return S.sessions.filter((s) => (s.status === 'active' || s.status === 'paused') && ensureLiveCode(s));
+  },
+  /** Codes this session used before, which may still have students working under them. */
+  oldCodes(sess) { return (sess.oldLiveCodes || []).filter(Boolean); },
+
+  /** Close replaced codes to new students, and end every code of a finished session. */
+  async retire() {
+    for (const sess of S.sessions) {
+      const ended = sess.status === 'completed';
+      if (ended && Date.now() - (sess.endedAt || 0) > 86400000) continue;
+      for (const code of this.oldCodes(sess)) {
+        const key = `${ended ? 'end' : 'close'}:${code}`;
+        if (this.retired.has(key)) continue;
+        await this.callIfKnown(`/labs/${encodeURIComponent(code)}/${ended ? 'end' : 'close'}`, {});
+        this.retired.add(key);
+      }
+    }
   },
 
   labFor(sess) {
@@ -63,7 +86,7 @@ const StudentSite = {
       c.precautions.length ? `Safety: ${c.precautions.join('; ')}` : '',
       ...steps.map((text, i) => `${i + 1}. ${text}`),
     ].filter(Boolean).join('\n');
-    return { code: classById(sess.classId).joinCode, procedure, teams, steps };
+    return { code: sess.liveCode, procedure, teams, steps };
   },
 
   async publish(sess) {
@@ -134,7 +157,7 @@ const StudentSite = {
   },
 
   /** Teacher-written checkpoints reach students as questions; their answers go back through the session API. */
-  async runCheckpoint(sess, c, team, code, students) {
+  async runCheckpoint(sess, c, team, codes, students) {
     const t = LabSessionAPI.track(sess.id, team.id);
     const cp = t && t.p.atCheckpoint ? checkpointById(c, t.p.atCheckpoint) : null;
     if (!cp || cp.kind !== 'response' || !cp.questions.length) return false;
@@ -143,13 +166,17 @@ const StudentSite = {
     const responses = {};
     for (const q of cp.questions) {
       const key = `${team.id}:${cp.id}:${q.id}`;
-      if (!asked[key]) {
-        const choices = q.type === 'mc' ? ` Choices: ${q.options.map((o) => o.text).join(', ')}.` : '';
-        const { sent } = await this.call(`/labs/${encodeURIComponent(code)}/prompts`, { question: `${q.prompt}${choices}`, teamIds: [team.id] });
-        if (sent.length) { asked[key] = sent.map((s) => s.promptId); this.saveAsked(asked); }
-        continue;
+      const ids = [];
+      for (const code of codes) {
+        const codeKey = `${code}:${key}`;
+        if (!asked[codeKey]) {
+          const choices = q.type === 'mc' ? ` Choices: ${q.options.map((o) => o.text).join(', ')}.` : '';
+          const r = await this.callIfKnown(`/labs/${encodeURIComponent(code)}/prompts`, { question: `${q.prompt}${choices}`, teamIds: [team.id] });
+          if (r && r.sent.length) { asked[codeKey] = r.sent.map((s) => s.promptId); this.saveAsked(asked); }
+        }
+        ids.push(...(asked[codeKey] || []));
       }
-      const reply = students.flatMap((s) => s.answers).find((a) => asked[key].includes(a.promptId));
+      const reply = students.flatMap((s) => s.answers).find((a) => ids.includes(a.promptId));
       if (!reply) continue;
       if (q.type === 'mc') {
         const said = reply.answer.toLowerCase();
@@ -170,17 +197,24 @@ const StudentSite = {
     if (typeof S === 'undefined' || !S || !this.config().token) { this.state = 'off'; return; }
     try {
       let changed = false;
+      await this.retire();
       for (const sess of this.sessions()) {
         const c = sessionContent(sess);
         if (!c || !c.steps.length) continue;
         const code = await this.publish(sess);
-        const { lab, students, teams } = await this.call(`/labs/${encodeURIComponent(code)}`);
-        if (!lab.plan) continue;
-        for (const team of teams) {
-          if (!groupById(team.id)) continue;
-          const members = students.filter((s) => s.teamId === team.id);
+        // Students who joined under a replaced code keep working, so read those labs too.
+        const reads = [];
+        for (const k of [code, ...this.oldCodes(sess)]) { const r = await this.callIfKnown(`/labs/${encodeURIComponent(k)}`); if (r && r.lab && r.lab.plan) reads.push({ code: k, ...r }); }
+        const students = reads.flatMap((r) => r.students);
+        const teamIds = new Set(reads.flatMap((r) => r.teams.map((t) => t.id)));
+        for (const id of teamIds) {
+          if (!groupById(id)) continue;
+          const parts = reads.flatMap((r) => r.teams.filter((t) => t.id === id));
+          const team = { ...parts[0], stepsDone: Math.max(...parts.map((t) => t.stepsDone || 0)), online: parts.reduce((n, t) => n + (t.online || 0), 0) };
+          const members = students.filter((s) => s.teamId === id);
           if (this.applyTeam(sess, c, team, members)) changed = true;
-          if (await this.runCheckpoint(sess, c, team, code, members)) changed = true;
+          const codes = reads.filter((r) => r.students.some((s) => s.teamId === id)).map((r) => r.code);
+          if (await this.runCheckpoint(sess, c, team, codes.length ? codes : [code], members)) changed = true;
         }
       }
       this.state = 'connected';
@@ -197,15 +231,16 @@ const StudentSite = {
   },
 
   card() {
-    const { url, token } = this.config();
+    const { url, token, studentUrl } = this.config();
     const label = { off: 'Not connected', connected: 'Connected', interrupted: 'Connection interrupted' }[this.state];
     const live = this.sessions();
     return html`<section class="card card-pad stack" aria-labelledby="ss-h">
       <div class="row between"><h2 id="ss-h">Student site</h2><span class="hint">${label}</span></div>
-      <p class="small muted">Students join with the class code. Each lab group’s progress then appears in Live Progress and the Help Queue while a session is active.</p>
+      <p class="small muted">Students open the student site and enter the live session code from Live Progress. They don’t need to be in the class. Each lab group’s progress then appears in Live Progress and the Help Queue while the session runs.</p>
       <div class="form-grid">
         <div class="field"><label class="label" for="ss-url">Address</label><input class="input" id="ss-url" value="${url}"></div>
         <div class="field"><label class="label" for="ss-token">Dashboard token</label><input class="input" id="ss-token" type="password" autocomplete="off" value="${token}"><span class="hint">Printed when the student site’s server starts.</span></div>
+        <div class="field"><label class="label" for="ss-student-url">Address students open <span class="opt">(optional)</span></label><input class="input" id="ss-student-url" placeholder="https://192.168.1.20:8443" value="${studentUrl}"><span class="hint">The https:// address the server printed for students. Labby shows it with the live session code and gives students a button that opens it with the code filled in.</span></div>
       </div>
       <div><button class="btn btn-primary" data-action="site-save">Save connection</button></div>
       ${live.length ? html`<div class="field"><label class="label" for="ss-question">Ask active classes a question</label><input class="input" id="ss-question" placeholder="Leave blank to have Gemma write one"></div>
@@ -215,13 +250,13 @@ const StudentSite = {
 
   actions: {
     'site-save': () => {
-      StudentSite.saveConfig({ url: document.getElementById('ss-url').value.trim(), token: document.getElementById('ss-token').value.trim() });
+      StudentSite.saveConfig({ url: document.getElementById('ss-url').value.trim(), token: document.getElementById('ss-token').value.trim(), studentUrl: document.getElementById('ss-student-url').value.trim() });
       StudentSite.tick().then(() => { toast(StudentSite.state === 'connected' ? 'Connected to the student site.' : 'Couldn’t reach the student site. Check the address and token.', StudentSite.state === 'connected' ? 'check' : 'alert'); commit(); });
     },
     'site-ask': async () => {
       const question = document.getElementById('ss-question').value.trim();
       try {
-        for (const sess of StudentSite.sessions()) await StudentSite.call(`/labs/${encodeURIComponent(classById(sess.classId).joinCode)}/prompts`, { question });
+        for (const sess of StudentSite.sessions()) await StudentSite.callIfKnown(`/labs/${encodeURIComponent(sess.liveCode)}/prompts`, { question });
         toast('Question sent to students.', 'check');
       } catch (e) { toast('Couldn’t reach the student site.', 'alert'); }
     },

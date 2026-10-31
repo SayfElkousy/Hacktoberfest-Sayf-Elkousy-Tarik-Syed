@@ -113,6 +113,7 @@ studentRoutes.post('/join', async (req, res) => {
 
   if (!lab) throw new HttpError(404, "That code doesn't match a lab. Check it with your teacher.");
   if (lab.status === 'ended') throw new HttpError(409, 'This lab has ended.');
+  if (lab.closed) throw new HttpError(409, 'That code was replaced. Ask your teacher for the new one.');
   if (lab.status === 'failed') throw new HttpError(503, "I couldn't read this lab's procedure. Ask your teacher to send it again.");
 
   // The site asks again shortly, once the procedure has been broken down.

@@ -48,9 +48,9 @@ The first start downloads the Kokoro voice model, about 310 MB, into `~/.cache/s
 
 ## Running a class
 
-The teacher runs the class from Labby, the dashboard in this repo. Open `dist/labby.html`, go to **Settings**, and under **Student site** enter this server's address and dashboard token. Labby then publishes each active session under the class join code, with the period's lab groups as teams.
+The teacher runs the class from Labby, the dashboard in this repo. Open `dist/labby.html`, go to **Settings**, and under **Student site** enter this server's address and dashboard token. Labby then publishes each running session under its live session code, shown at the top of Live Progress, with the period's lab groups as teams.
 
-Students open the `https://` address the server printed, type the class code and pick their lab group. Each group's steps, measurements, answers, help requests and safety alerts appear in Labby's Live Progress and Help Queue. Labby has to stay open, because the connection runs in the teacher's browser.
+Students open the `https://` address the server printed, type the live session code and pick their lab group. They don't need to be in the class. If the teacher makes a new code, the old one stops letting new students in, and students already working keep going. Each group's steps, measurements, answers, help requests and safety alerts appear in Labby's Live Progress and Help Queue. Labby has to stay open, because the connection runs in the teacher's browser.
 
 To try the student site without Labby, use the test page at `http://localhost:8080/teacher-test.html`.
 

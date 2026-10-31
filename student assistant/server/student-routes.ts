@@ -6,16 +6,19 @@ import {
   checkStep,
   detectBox,
   detectRuler,
+  findSetupProblem,
   gradeAnswer,
   identifyComponents,
   isInView,
   newPromptId,
+  readSpokenValue,
 } from './brain.ts';
-import type { StepCheck } from './brain.ts';
+import type { SetupCheck, StepCheck } from './brain.ts';
 import { studentChannel } from './events.ts';
 import { SupersededError } from './gemma.ts';
 import { HttpError } from './http-error.ts';
 import { openLab } from './labs.ts';
+import { isPendulumLab, pendulumFault, viewPendulum } from './pendulum.ts';
 import { deliverPrompt, pendingFor, removePrompt, toPublic } from './prompts.ts';
 import { decodeGray, fitLine } from './refine.ts';
 import type { GrayImage } from './refine.ts';
@@ -50,6 +53,8 @@ const BACKGROUND_CORRECT_NEEDED = 2;
 const SIGHTINGS_NEEDED = 2;
 
 const correctStreaks = new Map<string, number>();
+const PROBLEM_LOOKS_NEEDED = 2;
+const problemStreaks = new Map<string, number>();
 const sightings = new Map<string, number>();
 
 export const studentRoutes = Router();
@@ -292,6 +297,37 @@ function confirmPrompt(step: LabStep) {
   };
 }
 
+/**
+ * A quiet look over the bench for anything wrong. It only reports the same problem
+ * twice running, because one bad look would otherwise interrupt a student who is fine.
+ */
+studentRoutes.post('/students/:id/setup-check', async (req, res) => {
+  const { student, plan } = contextFor(req);
+  const step = student.phase === 'steps' ? (plan.steps[student.currentStep] ?? null) : null;
+
+  const frame = readFrame(req.body.frame);
+  const look = async (): Promise<SetupCheck> => {
+    if (!isPendulumLab(plan)) return findSetupProblem(step, plan.components, frame, `setup:${student.id}`);
+    const view = await viewPendulum(frame, `setup:${student.id}`);
+    return { problem: pendulumFault(view, step), alert: view.unsafe ? `Seen on camera: ${view.observed}` : null };
+  };
+
+  const check = await look().catch((error: Error) => {
+    if (error instanceof SupersededError) throw error;
+    console.warn('Setup check failed:', error.message);
+    return { problem: null, alert: null };
+  });
+
+  const streak = check.problem ? (problemStreaks.get(student.id) ?? 0) + 1 : 0;
+  problemStreaks.set(student.id, streak);
+
+  if (check.alert) {
+    student.alert = check.alert;
+    saveStudent(student);
+  }
+  res.json({ problem: streak >= PROBLEM_LOOKS_NEEDED ? check.problem : null });
+});
+
 /** Asks the student directly, for steps only they can confirm. */
 studentRoutes.post('/students/:id/steps/:stepId/confirm', (req, res) => {
   const context = contextFor(req);
@@ -377,7 +413,7 @@ studentRoutes.post('/students/:id/steps/:stepId/measure', async (req, res) => {
         at: Date.now(),
       });
 
-      if (within !== null) progress.status = within ? 'passed' : 'needs_attention';
+      progress.status = within === false ? 'needs_attention' : 'passed';
     }
   }
 
@@ -409,12 +445,18 @@ studentRoutes.post('/students/:id/steps/:stepId/record', (req, res) => {
     at: Date.now(),
   });
 
-  if (within !== null) progress.status = within ? 'passed' : 'needs_attention';
+  progress.status = within === false ? 'needs_attention' : 'passed';
   progress.lastFeedback =
     within === null ? 'Recorded.' : within ? 'That matches the procedure.' : `That doesn't match. It should be ${goal?.target}.`;
 
   saveStudent(student);
   res.json({ withinTolerance: within, feedback: progress.lastFeedback });
+});
+
+/** Words the microphone caught. Replies with the reading in them, if there is one. */
+studentRoutes.post('/students/:id/steps/:stepId/heard', async (req, res) => {
+  const { step } = stepFor(req, contextFor(req));
+  res.json(await readSpokenValue(step, readText(req.body.text, 'Text')));
 });
 
 /** Without this, a bulkier object beside the thing being measured can get detected instead. */

@@ -30,6 +30,8 @@ function dashboardToken(): string {
 export const config = {
   ollamaUrl: process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
   model: process.env.GEMMA_MODEL || 'gemma4:e4b',
+  /** Sees fine detail like a thin string or a hand on it far better, but is slower. */
+  detailModel: process.env.GEMMA_DETAIL_MODEL || 'gemma4:12b',
   httpsPort: Number(process.env.PORT) || 8443,
   /** Plain HTTP for this laptop only: browsers treat localhost as secure. */
   localPort: Number(process.env.LOCAL_PORT) || 8080,

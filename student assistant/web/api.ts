@@ -44,11 +44,14 @@ export const api = {
   startSteps: (id: string) => post<StudentProgress>(`/students/${id}/start-steps`),
   check: (id: string, stepId: string, frame: Frame, background = false) =>
     post<CheckResult>(`/students/${id}/steps/${stepId}/check`, { frame, background }),
+  setupCheck: (id: string, frame: Frame) => post<{ problem: string | null }>(`/students/${id}/setup-check`, { frame }),
   confirm: (id: string, stepId: string) => post<PublicPrompt>(`/students/${id}/steps/${stepId}/confirm`),
   measure: (id: string, stepId: string, frame: Frame) =>
     post<MeasureResult>(`/students/${id}/steps/${stepId}/measure`, { frame }),
   record: (id: string, stepId: string, value: number) =>
     post<{ withinTolerance: boolean | null; feedback: string }>(`/students/${id}/steps/${stepId}/record`, { value }),
+  heard: (id: string, stepId: string, text: string) =>
+    post<{ value: number; unit: string } | null>(`/students/${id}/steps/${stepId}/heard`, { text }),
   sensor: (id: string, stepId: string, readings: number[], unit: string) =>
     post<SensorResult>(`/students/${id}/steps/${stepId}/sensor`, { readings, unit }),
   answer: (id: string, promptId: string, answer: string) =>

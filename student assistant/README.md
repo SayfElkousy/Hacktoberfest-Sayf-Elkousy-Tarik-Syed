@@ -16,7 +16,9 @@ Everything runs on one laptop. Student video never leaves it.
 | Writing questions, grading answers, helping students | Gemma 4 |
 | Turning positions into angles and lengths | Plain arithmetic in `shared/measure.ts` and `server/refine.ts` |
 | Speaking out loud | Kokoro, an open-source voice model, because Gemma 4 only outputs text |
-| Hearing students | The browser's speech recognition. Typing always works too. |
+| Watching the bench | Every 15 seconds Gemma looks for the wrong equipment or anything unsafe, and speaks up after seeing the same kind of problem twice. |
+| Pendulum labs | The bench watch uses the larger `gemma4:12b` model (`GEMMA_DETAIL_MODEL`) and checks for a wide swing, a slack or gripped string, a mass on the table, a tilted stand and an empty stand. |
+| Hearing students | The browser's speech recognition, listening all through the lab, with Gemma picking out spoken readings. In Chrome this sends microphone audio to Google, so it needs internet and isn't local. Students can turn it off with Mic on/off, and typing always works. |
 
 ## Setup
 

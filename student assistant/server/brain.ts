@@ -302,7 +302,7 @@ async function isOnList(objects: string[], item: VisibleItem, backgroundKey?: st
     schema: object({ reason: string, match: boolean }),
     background: backgroundKey !== undefined,
     key: backgroundKey,
-    maxTokens: 80,
+    maxTokens: 250,
   });
   return reply.match;
 }
@@ -316,7 +316,7 @@ async function looksPresent(item: VisibleItem, frame: Frame, backgroundKey?: str
     schema: object({ observed: string, present: boolean }),
     background: backgroundKey !== undefined,
     key: backgroundKey,
-    maxTokens: 160,
+    maxTokens: 300,
   });
   return reply.present;
 }
@@ -349,6 +349,70 @@ export async function identifyComponents(
     items.push({ id: component.id, visible, box });
   }
   return items;
+}
+
+export interface SetupCheck {
+  /** Said to the student, or null if the bench looks fine. */
+  problem: string | null;
+  /** Something the teacher should see, or null. */
+  alert: string | null;
+}
+
+/**
+ * Looks over the bench without being asked. Nobody is waiting on this, and a false
+ * alarm interrupts a student who is doing fine, so the bar for speaking up is high.
+ */
+export async function findSetupProblem(
+  step: LabStep | null,
+  components: LabComponent[],
+  frame: Frame,
+  key: string,
+): Promise<SetupCheck> {
+  const needed = step ? components.filter((component) => step.tracks.includes(component.id)) : [];
+  const objects = await listObjects(frame, `${key}:list`);
+
+  // One item out of view proves nothing: water sits in a beaker, and a step may not
+  // have got to the next item yet. Seeing none of them means the wrong gear is out.
+  if (needed.length > 0) {
+    let seen = false;
+    for (const component of needed) {
+      if (await isInView(component, frame, objects, `${key}:${component.id}`)) {
+        seen = true;
+        break;
+      }
+    }
+    if (!seen) {
+      const names = needed.map((component) => `the ${component.name}`).join(' or ');
+      return { problem: `I can't see ${names}. This step needs it, so check you have the right equipment out.`, alert: null };
+    }
+  }
+
+  const task = step ? `The student is on this step: ${step.instruction}` : `The student is setting up.`;
+  const equipment = components.map((component) => component.name).join(', ');
+
+  // "observed" comes first on purpose, as in checkStep, and "wrong" has to name the
+  // fault before the verdict, because a model that can't name one tends to say none.
+  const reply = await askGemma<{ observed: string; wrong: string; hasProblem: boolean; feedback: string; unsafe: boolean }>({
+    system: `You watch a student's lab bench through a webcam. Most of the time nothing is wrong.
+
+First, in "observed", list only the objects you can actually see and how they are arranged. Do not mention the lab yet.
+In "wrong", name one clear fault you can point to in the picture: the wrong piece of equipment for the step, something set up in a way the step forbids, or something dangerous. If there is no clear fault, write "none".
+"hasProblem" is true only if "wrong" names a fault. Other objects nearby, a person, a messy background, or work that is part way through are not faults.
+
+"feedback" tells the student what to fix, or is empty if there is no problem. ${VOICE} ${SAFETY} Set "unsafe" to true only if something dangerous is visible.`,
+    prompt: `${task}\nEquipment for this lab: ${equipment}`,
+    images: [frame.image],
+    schema: object({ observed: string, wrong: string, hasProblem: boolean, feedback: string, unsafe: boolean }),
+    background: true,
+    key,
+    maxTokens: 400,
+  });
+
+  const found = reply.hasProblem && reply.wrong.trim().toLowerCase() !== 'none';
+  return {
+    problem: found ? reply.feedback : null,
+    alert: found && reply.unsafe ? `Seen on camera: ${reply.wrong}` : null,
+  };
 }
 
 function toBox(box: number[] | null): GridBox | null {
@@ -524,6 +588,44 @@ export async function answerStudent(
   });
 
   return { reply: answer.reply, alert: answer.needsTeacher ? `Student said: "${question}"` : null };
+}
+
+/**
+ * The microphone hears everything at the bench, so this decides whether what was
+ * said is the result of this step, and returns it, or null if it was anything else.
+ */
+export async function readSpokenValue(step: LabStep, heard: string): Promise<{ value: number; unit: string } | null> {
+  const goal = step.measurement;
+  const unit = goal ? (goal.unit === 'deg' ? 'degrees' : 'centimetres') : null;
+  const wanted = goal ? `The result is ${goal.subject}, in ${unit}.` : `The result is the reading this step asks for.`;
+
+  // "said" comes first for the same reason as "claim" when grading: quoting the
+  // words first stops the model from guessing a number the student never gave.
+  const reply = await askGemma<{ said: string; isResult: boolean; value: number | null; unit: string }>({
+    system: `A microphone at a lab bench hears everything a student says. Decide if they just stated the result of their current step.
+
+First, in "said", copy the words that contain the number. If there is no number, write "none".
+"isResult" is true only when the student states what they measured or read. A number on its own, like "twenty one point five", counts.
+"isResult" is false for a question, a target or a guess, a plan, a count of things or people, a time, or talk about something else.
+"value" is the number as digits, or null when "isResult" is false.${unit ? ` Convert it to ${unit} if they used another unit.` : ''} "unit" is the unit of "value", or "" if they gave none.
+
+Example: <student>okay I got twenty one point five</student>
+{"said":"twenty one point five","isResult":true,"value":21.5,"unit":""}
+
+Example: <student>should it be thirty</student>
+{"said":"should it be thirty","isResult":false,"value":null,"unit":""}
+
+Example: <student>hand me those two rulers</student>
+{"said":"two rulers","isResult":false,"value":null,"unit":""}
+
+${GUARD}`,
+    prompt: `Step: ${step.instruction}\n${wanted}\n<student>${heard}</student>`,
+    schema: object({ said: string, isResult: boolean, value: nullable('number'), unit: string }),
+    maxTokens: 120,
+  });
+
+  if (!reply.isResult || reply.value === null || !Number.isFinite(reply.value)) return null;
+  return { value: reply.value, unit: reply.unit };
 }
 
 export function newPromptId(): string {

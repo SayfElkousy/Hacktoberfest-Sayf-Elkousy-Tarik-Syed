@@ -636,6 +636,27 @@ legend {
 }
 
 /* What the assistant just said. */
+.captions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.captions p {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.captions svg {
+  flex: none;
+  margin-top: 4px;
+}
+
+.captions-heard {
+  font-style: italic;
+}
+
 .feedback {
   display: flex;
   flex-direction: column;

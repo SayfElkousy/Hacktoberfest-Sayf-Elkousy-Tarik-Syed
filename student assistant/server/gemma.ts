@@ -15,6 +15,8 @@ export interface GemmaRequest {
   /** Background requests sharing a key replace each other while queued. */
   key?: string;
   maxTokens?: number;
+  /** For the few jobs that need a stronger model than the default. */
+  model?: string;
 }
 
 interface Job {
@@ -28,10 +30,16 @@ const REQUEST_TIMEOUT_MS = 180_000;
 const CONCURRENCY = 1;
 /** A background camera frame older than this no longer shows what the student is doing. */
 const MAX_BACKGROUND_AGE_MS = 20_000;
+/**
+ * The two models don't fit on the GPU together, and swapping takes 10 seconds or more.
+ * So once something has needed the stronger model, everything stays on it for this long.
+ */
+const STAY_ON_MODEL_MS = 60_000;
 
 const urgent: Job[] = [];
 const background: Job[] = [];
 let running = 0;
+let strongerModelAt = 0;
 
 export class SupersededError extends Error {}
 
@@ -94,13 +102,21 @@ async function run(request: GemmaRequest): Promise<unknown> {
   throw lastError ?? new Error('Gemma returned nothing');
 }
 
+function modelFor(request: GemmaRequest): string {
+  if (request.model) {
+    strongerModelAt = Date.now();
+    return request.model;
+  }
+  return Date.now() - strongerModelAt < STAY_ON_MODEL_MS ? config.detailModel : config.model;
+}
+
 async function callOllama(request: GemmaRequest): Promise<string> {
   const response = await fetch(`${config.ollamaUrl}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
-      model: config.model,
+      model: modelFor(request),
       stream: false,
       think: false,
       keep_alive: '2h',

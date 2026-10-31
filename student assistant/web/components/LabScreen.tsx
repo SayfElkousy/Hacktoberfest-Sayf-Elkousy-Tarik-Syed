@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, listenForEvents, Superseded } from '../api.ts';
 import { useCamera } from '../camera.ts';
+import { useLiveListening } from '../dictation.ts';
 import { voice } from '../voice.ts';
 import { AskBar } from './AskBar.tsx';
 import { CameraView, EMPTY_OVERLAY } from './CameraView.tsx';
@@ -23,10 +24,16 @@ import type {
 const EQUIPMENT_LOOK_MS = 2_500;
 const MAX_EQUIPMENT_LOOKS = 8;
 const STEP_LOOK_MS = 10_000;
+const SETUP_LOOK_MS = 15_000;
+const SETUP_QUIET_MS = 60_000;
 
 const MAX_HISTORY = 30;
 const LOOKING = 'Looking at your work…';
 const MEASURING = 'Measuring…';
+
+/** Saves Gemma a turn on the GPU for everything said at the bench that has no number in it. */
+const MENTIONS_NUMBER =
+  /\d|\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\w+teen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|half|quarter|point)\b/i;
 
 const STEP_STATUS_LABEL: Partial<Record<StepStatus, string>> = {
   passed: 'Looks good',
@@ -79,11 +86,18 @@ export function LabScreen({ session, onLeave }: Props) {
   const [overlay, setOverlay] = useState<Overlay>(EMPTY_OVERLAY);
   const [muted, setMuted] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [micOn, setMicOn] = useState(true);
+  const [caption, setCaption] = useState('');
+  const [heard, setHeard] = useState('');
+  const [spoken, setSpoken] = useState<{ text: string } | null>(null);
 
   const [scanFinished, setScanFinished] = useState(false);
   const [connected, setConnected] = useState(true);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const historyId = useRef(0);
+  /** Said ahead of the next step, so the student hears what was saved. */
+  const savedNote = useRef('');
+  const waitingPhrase = useRef('');
 
   const { videoRef, status: cameraStatus, capture } = useCamera();
   const cameraReady = cameraStatus === 'ready';
@@ -98,11 +112,15 @@ export function LabScreen({ session, onLeave }: Props) {
 
   useEffect(() => {
     voice.setStudent(id);
+    voice.onCaption = setCaption;
 
     // After a page reload there's been no click yet, so sound has to wait for one.
     const unlock = () => voice.start();
     window.addEventListener('pointerdown', unlock, { once: true });
-    return () => window.removeEventListener('pointerdown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      voice.onCaption = null;
+    };
   }, [id]);
 
   const remember = useCallback((from: HistoryEntry['from'], text: string) => {
@@ -165,15 +183,17 @@ export function LabScreen({ session, onLeave }: Props) {
     const key = student.phase === 'steps' ? step?.id ?? null : student.phase;
     if (key === spokenStep.current) return;
     spokenStep.current = key;
+    const note = savedNote.current;
+    savedNote.current = '';
     setMessage(null);
     setOverlay(EMPTY_OVERLAY);
 
     if (step) {
-      void voice.say([step.instruction, step.safety ? `Safety: ${step.safety}` : ''].filter(Boolean).join(' '));
+      void voice.say([note, step.instruction, step.safety ? `Safety: ${step.safety}` : ''].filter(Boolean).join(' '));
     } else if (student.phase === 'components') {
       void voice.say(`Welcome to ${plan.title}. Put each piece of equipment where your camera can see it.`);
     } else {
-      void voice.say(`That's the end of the lab. Nice work, ${student.name}.`);
+      void voice.say([note, `That's the end of the lab. Nice work, ${student.name}.`].filter(Boolean).join(' '));
     }
   }, [student.phase, student.name, step, plan.title]);
 
@@ -220,6 +240,37 @@ export function LabScreen({ session, onLeave }: Props) {
       stopped = true;
     };
   }, [student.phase, cameraStatus, capture, id, plan.components]);
+
+  // Throughout the steps, keep an eye on the bench and speak up if something's wrong.
+  const watchSetup = student.phase === 'steps' && cameraStatus === 'ready' && !ended;
+  useEffect(() => {
+    if (!watchSetup) return;
+
+    let stopped = false;
+    (async () => {
+      while (!stopped) {
+        await new Promise((resolve) => setTimeout(resolve, SETUP_LOOK_MS));
+        if (stopped || paused.current) continue;
+
+        const frame = capture();
+        if (!frame) continue;
+        try {
+          const { problem } = await api.setupCheck(id, frame);
+          if (!stopped && problem && !paused.current) {
+            tell(problem, 'warn');
+            // Give them time to fix it before bringing anything up again.
+            await new Promise((resolve) => setTimeout(resolve, SETUP_QUIET_MS));
+          }
+        } catch (failure) {
+          if (!(failure instanceof Superseded)) console.warn(failure);
+        }
+      }
+    })();
+
+    return () => {
+      stopped = true;
+    };
+  }, [watchSetup, capture, id, tell]);
 
   // On camera steps, watch quietly and speak up once the step looks done.
   const stepId = step?.id;
@@ -306,28 +357,80 @@ export function LabScreen({ session, onLeave }: Props) {
       return result;
     });
 
+  const moveOn = async () => {
+    const result = await api.next(id);
+    setStudent(result.student);
+    if (result.prompt) addPrompt(result.prompt);
+  };
+
+  // A saved value finishes the step, unless it's wrong and needs measuring again.
+  const saveValue = async (current: NonNullable<typeof step>, value: number) => {
+    const result = await api.record(id, current.id, value);
+    if (result.withinTolerance === false) {
+      tell(result.feedback, 'warn');
+      await refresh();
+      return;
+    }
+    const unit = current.measurement?.unit === 'deg' ? 'degrees' : current.measurement ? 'centimetres' : '';
+    savedNote.current = `Saved ${value} ${unit}.`.replace(' .', '.');
+    remember('ai', savedNote.current);
+    await moveOn();
+  };
+
+  const saveReadings = async (current: NonNullable<typeof step>, readings: number[], unit: string) => {
+    const result = await api.sensor(id, current.id, readings, unit);
+    savedNote.current = result.feedback;
+    remember('ai', result.feedback);
+    await moveOn();
+  };
+
   const record = (value: number) =>
     withBusy('Saving…', async () => {
-      if (!step) return;
-      const result = await api.record(id, step.id, value);
-      tell(result.feedback, result.withinTolerance === false ? 'warn' : 'good');
-      await refresh();
+      if (step) await saveValue(step, value);
     });
 
   const saveSensor = (readings: number[], unit: string) =>
     withBusy('Saving your readings…', async () => {
-      if (!step) return;
-      const result = await api.sensor(id, step.id, readings, unit);
-      tell(result.feedback, 'good');
-      await refresh();
+      if (step) await saveReadings(step, readings, unit);
     });
 
-  const next = () =>
-    withBusy('One moment…', async () => {
-      const result = await api.next(id);
-      setStudent(result.student);
-      if (result.prompt) addPrompt(result.prompt);
+  // The microphone hears the whole bench, so Gemma picks out actual readings.
+  const hearPhrase = (text: string) => {
+    setHeard(text);
+    if (prompt) {
+      setSpoken({ text });
+      return;
+    }
+
+    const current = step;
+    if (!current || !MENTIONS_NUMBER.test(text)) return;
+    if (current.mode !== 'measure' && current.mode !== 'sensor') return;
+
+    // Something else is running, so this waits its turn rather than getting lost.
+    if (paused.current) {
+      waitingPhrase.current = text;
+      return;
+    }
+
+    void withBusy('Writing that down…', async () => {
+      const reading = await api.heard(id, current.id, text);
+      if (!reading) return;
+      remember('you', text);
+      if (current.mode === 'sensor') await saveReadings(current, [reading.value], reading.unit);
+      else await saveValue(current, reading.value);
     });
+  };
+
+  const { status: micStatus, partial } = useLiveListening(micOn && student.phase !== 'done' && !ended, hearPhrase);
+
+  useEffect(() => {
+    if (busy !== null || prompt !== null || !waitingPhrase.current) return;
+    const text = waitingPhrase.current;
+    waitingPhrase.current = '';
+    hearPhrase(text);
+  });
+
+  const next = () => withBusy('One moment…', moveOn);
 
   const ask = async (question: string) => {
     remember('you', question);
@@ -412,6 +515,11 @@ export function LabScreen({ session, onLeave }: Props) {
             <Icon name={muted ? 'speakerOff' : 'speaker'} size={18} />
             {muted ? 'Voice off' : 'Voice on'}
           </button>
+          {micStatus !== 'unsupported' && (
+            <button className="icon-button" onClick={() => setMicOn(!micOn)} aria-pressed={micOn}>
+              {micOn ? 'Mic on' : 'Mic off'}
+            </button>
+          )}
           <button className={student.helpRequested ? 'alert-button' : 'secondary'} onClick={toggleHelp}>
             <Icon name="hand" size={18} />
             {student.helpRequested ? 'Teacher notified' : 'Get teacher'}
@@ -423,6 +531,23 @@ export function LabScreen({ session, onLeave }: Props) {
         <CameraView videoRef={videoRef} status={cameraStatus} overlay={overlay} connected={connected} analysis={analysis} />
 
         <aside className="panel" aria-label="Guidance">
+          <div className="captions">
+            {caption && (
+              <p aria-live="polite">
+                <Icon name="speaker" size={16} />
+                {caption}
+              </p>
+            )}
+            {micStatus === 'on' && (
+              <p className="captions-heard">
+                {partial || heard ? `You: ${partial || heard}` : 'Listening. Say your measurement out loud.'}
+              </p>
+            )}
+            {micStatus === 'blocked' && (
+              <p className="captions-heard">The microphone is blocked, so type your measurements instead.</p>
+            )}
+          </div>
+
           {ended && (
             <div className="banner">
               <p>Your teacher has ended this lab.</p>
@@ -434,6 +559,7 @@ export function LabScreen({ session, onLeave }: Props) {
             <PromptCard
               key={prompt.id}
               prompt={prompt}
+              spoken={spoken}
               onAnswer={async (answer) => {
                 remember('you', answer);
                 const result = await api.answer(id, prompt.id, answer);

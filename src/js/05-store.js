@@ -49,26 +49,48 @@ function resetDemo() {
   S = makeSeed(Date.now());
   U.modal = null; U.drawer = null; U.menu = false;
   commit();
-  go('overview');
+  go(homeFor());
   toast('Demo data reset. The Period 4 lab is mid-session again.');
 }
 
-/* ---------- Routing ---------- */
+/* ---------- Routing ----------
+   Teacher routes keep their phase-1 names; student routes start with s/,
+   research routes with r/, and #join/CODE[/PERIOD] is a class invitation. */
 const TEACHER_ROUTES = ['overview', 'classes', 'class-new', 'designer', 'library', 'import', 'live', 'help', 'prefs'];
-function parseRoute() {
-  const h = decodeURIComponent(location.hash.replace(/^#/, ''));
+const STUDENT_ROUTES = ['s/overview', 's/classes', 's/class', 's/labs', 's/lab', 's/live', 's/profile', 's/join', 's/onboarding'];
+const RESEARCH_ROUTES = ['r/overview', 'r/projects', 'r/project', 'r/protocols', 'r/protocol', 'r/runs', 'r/run', 'r/compare', 'r/explore', 'r/public', 'r/shared', 'r/inventory', 'r/settings', 'r/new-run', 'r/import'];
+function routeFrom(hash) {
+  const h = decodeURIComponent(String(hash || '').replace(/^#/, ''));
+  const [path, query] = h.split('?');
+  const q = Object.fromEntries(new URLSearchParams(query || ''));
   let m;
-  if ((m = /^class-([a-z0-9]+)$/i.exec(h)) && h !== 'class-new') return { name: 'class', id: m[1] };
-  if ((m = /^lab-([a-z0-9]+)$/i.exec(h))) return { name: 'lab', id: m[1] };
-  return { name: h || '' };
+  if ((m = /^class-([a-z0-9]+)$/i.exec(path)) && path !== 'class-new') return { name: 'class', id: m[1], q, hash: h };
+  if ((m = /^lab-([a-z0-9]+)$/i.exec(path))) return { name: 'lab', id: m[1], q, hash: h };
+  const parts = path.split('/');
+  if (parts[0] === 'join') return { name: 'join', code: (parts[1] || '').toUpperCase(), periodId: parts[2] || '', q, hash: h };
+  if ((parts[0] === 's' || parts[0] === 'r') && parts.length >= 2) return { name: `${parts[0]}/${parts[1]}`, id: parts[2] || '', sub: parts[3] || '', q, hash: h };
+  return { name: path || '', q, hash: h };
 }
-function homeFor(role) { return role === 'teacher' ? 'overview' : role === 'student' ? 'student' : 'independent'; }
+function parseRoute() { return routeFrom(location.hash); }
+/** Where a signed-in user lands: onboarding first, then a pending class invitation, then their workspace. */
+function homeFor() {
+  const u = me(); if (!u) return 'signin';
+  if (u.role === 'student' && !u.onboarded) return 's/onboarding';
+  if (S.pendingInvite && S.pendingInvite.code) { const inv = S.pendingInvite; return `join/${inv.code}${inv.periodId ? '/' + inv.periodId : ''}`; }
+  return WORKSPACES[defaultWorkspace(u)].home;
+}
 function guardRoute(r) {
   const user = me();
-  if (!user) return ['signin', 'signup'].includes(r.name) ? r : { name: 'signin' };
-  if (['signin', 'signup', ''].includes(r.name)) return { name: homeFor(user.role), redirect: true };
-  if (user.role === 'teacher') return TEACHER_ROUTES.includes(r.name) || r.name === 'class' || r.name === 'lab' ? r : { name: 'overview', redirect: true };
-  return r.name === homeFor(user.role) ? r : { name: homeFor(user.role), redirect: true };
+  const to = (hash, extra = {}) => ({ ...routeFrom(hash), redirect: true, ...extra });
+  if (r.name === 'join' && !user) { S.pendingInvite = { code: r.code, periodId: r.periodId, at: Date.now() }; return to('signup', { invite: true }); }
+  if (!user) return ['signin', 'signup'].includes(r.name) ? r : to('signin');
+  if (['signin', 'signup', ''].includes(r.name)) return to(homeFor());
+  if (user.role === 'student' && !user.onboarded && r.name !== 's/onboarding') return to('s/onboarding');
+  if (r.name === 'join') return r;
+  const ws = workspaceOfRoute(r.name);
+  if (!workspacesFor(user).includes(ws)) return to(homeFor(), { denied: ws });
+  const known = ws === 'teacher' ? (TEACHER_ROUTES.includes(r.name) || r.name === 'class' || r.name === 'lab') : ws === 'student' ? STUDENT_ROUTES.includes(r.name) : RESEARCH_ROUTES.includes(r.name);
+  return known ? r : to(WORKSPACES[ws].home);
 }
 
 /* ---------- Shared selection: class → period → session (Live Progress + Help Queue) ---------- */
@@ -101,10 +123,10 @@ function setCtxSession(sessionId) {
 function openSession(sessionId, where = 'live') { setCtxSession(sessionId); S.ui.ctx.periodId = sessionById(sessionId).periodId; go(where); }
 
 /* ---------- Domain actions ---------- */
-function createAssignment(labId, versionId, classId, periodIds, dateISO) {
+function createAssignment(labId, versionId, classId, periodIds, dateISO, opts = {}) {
   const lab = labById(labId); const v = versionById(lab, versionId);
   v.locked = true; lab.updatedAt = Date.now();
-  const as = { id: uid(), labId, versionId, classId, periodIds: [...periodIds], scheduledFor: dateISO, createdAt: Date.now() };
+  const as = { id: uid(), labId, versionId, classId, periodIds: [...periodIds], scheduledFor: dateISO, scheduledTime: opts.time || '', published: opts.published !== false, autoOpen: !!opts.autoOpen, createdAt: Date.now() };
   S.assignments.push(as);
   for (const pid of periodIds) S.sessions.push({ id: uid(), assignmentId: as.id, labId, versionId, classId, periodId: pid, status: 'scheduled', scheduledFor: dateISO, pausedTotal: 0 });
   return as;

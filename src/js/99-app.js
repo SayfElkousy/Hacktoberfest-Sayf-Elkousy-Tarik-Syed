@@ -25,6 +25,9 @@ function modalView() {
     case 'review': return reviewModal();
     case 'end': return endSessionModal();
     case 'reset': return resetModal();
+    case 'student-preview': return studentPreviewModal();
+    case 'cp-review': return cpReviewModal();
+    case 'image': return modalShell({ title: U.modal.name, wide: true, body: html`<img src="${U.modal.url}" alt="${U.modal.name}" style="max-width:100%;border-radius:12px">`, foot: html`<button class="btn" data-action="modal-close">Close</button>` });
     case 'preview': return modalShell({ title: 'Preview student instructions', sub: U.modal.sub || '', body: studentPreview(U.modal.content), foot: html`<button class="btn" data-action="modal-close">Close</button>` });
     default: return '';
   }
@@ -38,14 +41,23 @@ function render() {
   U.route = r;
   const user = me();
   let page;
-  if (!user) page = html`${demoBand()}${authView(r)}`;
-  else if (user.role !== 'teacher') page = placeholderView(user.role);
-  else { const [title, body, ctx] = teacherPage(r); page = teacherShell(r, title, body, ctx || ''); document.title = `${title} · Labby`; }
-  if (!user || user.role !== 'teacher') document.title = 'Labby';
+  if (!user) { page = html`${demoBand()}${authView(r)}`; document.title = 'Labby'; }
+  else if (r.name === 's/onboarding') { page = onboardingView(); document.title = 'Set up your profile · Labby'; }
+  else if (r.name === 'join') { page = workspacesFor(user).includes('student') ? wsShell('student', r, 'Join a class', joinView(r)) : joinStandalone(r); document.title = 'Join a class · Labby'; }
+  else {
+    const ws = workspaceOfRoute(r.name); user.lastWorkspace = ws;
+    const [title, body, ctx] = ws === 'teacher' ? teacherPage(r) : ws === 'student' ? studentPage(r) : researchPage(r);
+    page = ws === 'teacher' ? teacherShell(r, title, body, ctx || '') : wsShell(ws, r, title, body, ctx || '');
+    document.title = `${title} · Labby`;
+  }
   morphInto(root, html`${page}${modalView()}${toastsView()}`.s);
   afterRender(r);
 }
 function afterRender(r) {
+  // Live session lifecycle: leaving the session route stops the camera, the AI connection and pending analysis.
+  const liveKey = r.name === 's/live' && r.id ? `class:${r.id}` : r.name === 'r/run' && r.sub === 'guided' ? `run:${r.id}` : null;
+  if (Live.key && Live.key !== liveKey) Live.teardown();
+  Live.attachVideo();
   const key = r.name + (r.id || '');
   if (key !== U.lastRouteKey) {
     U.lastRouteKey = key;
@@ -226,7 +238,7 @@ const CHANGES = {
     const v = el.value;
     if (v === 'out') { S.currentUserId = null; commit(); go('signup'); return; }
     if (v === 'own') return;
-    const u = S.users.find((x) => x.demo && x.role === v); S.currentUserId = u.id; commit(); go(homeFor(u.role));
+    const u = S.users.find((x) => x.id === v); if (!u) return; S.currentUserId = u.id; commit(); go(homeFor());
   },
   'ctx-class': (el) => { setCtxClass(el.value); U.drawer = null; commit(); },
   'ctx-period': (el) => { setCtxPeriod(el.value); U.drawer = null; commit(); },
@@ -242,7 +254,7 @@ const CHANGES = {
   'import-file': (el) => { const f = el.files && el.files[0]; el.value = ''; importFile(f); },
   'demo-cat': (el) => { S.ui.demoCat = el.value; S.ui.demoMsg = SAMPLE_HELP[el.value][0]; commit(); },
 };
-const SUBMITS = {
+const SUBMITS_BASE = {
   signin: () => submitSignin(),
   signup: () => submitSignup(),
   'create-class': () => submitCreateClass(),
@@ -259,10 +271,16 @@ const SUBMITS = {
   },
 };
 
+const SUBMITS = SUBMITS_BASE;
+Object.assign(ACTIONS, STUDENT_ACTIONS, LIVE_ACTIONS, TEACHER2_ACTIONS, typeof RESEARCH_ACTIONS === 'object' ? RESEARCH_ACTIONS : {});
+Object.assign(CHANGES, STUDENT_CHANGES, LIVE_CHANGES, TEACHER2_CHANGES, typeof RESEARCH_CHANGES === 'object' ? RESEARCH_CHANGES : {});
+Object.assign(SUBMITS, STUDENT_SUBMITS, LIVE_SUBMITS, typeof RESEARCH_SUBMITS === 'object' ? RESEARCH_SUBMITS : {});
+
 /* ---------- Event wiring ---------- */
 function wireEvents() {
   document.addEventListener('click', (ev) => {
     if (U.menu && !ev.target.closest('.profile')) { U.menu = false; commit(); }
+    if (U.newMenu && !ev.target.closest('.new-wrap')) { U.newMenu = false; commit(); }
     if (U.explainOpen && !ev.target.closest('.explain')) { U.explainOpen = false; commit(); }
     const el = ev.target.closest('[data-action]');
     const control = ev.target.closest('input, select, textarea, label');
@@ -334,6 +352,9 @@ function tick() {
   if (user && user.role === 'teacher') {
     if (S.demo.autoplay && tickCount % 6 === 0) { autoplayTick(); commit(); }
     else if (tickCount % 15 === 0 && U.route && ['overview', 'live', 'help'].includes(U.route.name)) commit();
+  }
+  if (user && user.role !== 'teacher' || (U.route && /^(s|r)\//.test(U.route.name))) {
+    if (tickCount % 10 === 0 && U.route && ['s/overview', 's/live', 's/lab', 's/labs', 'r/overview'].includes(U.route.name)) commit();
   }
 }
 

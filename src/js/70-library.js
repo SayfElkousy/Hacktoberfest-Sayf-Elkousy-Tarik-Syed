@@ -172,14 +172,14 @@ function labEditorView(id) {
   return html`<div class="stack loose">
     <div class="row between wrap top"><div class="stack tight"><a href="#library" class="small">${icon('arrowLeft', 'sm')} Library</a>
       <div class="row wrap">${labPill(labStatus(lab))}<span class="tag">Editing version ${latest.locked ? latest.number + 1 : latest.number}${latest.locked ? ' (new)' : ''}</span><span class="tag">${SOURCE_LABEL[lab.source]}</span>${dirty ? html`<span class="tag" style="background:var(--warn-soft);color:var(--warn)">Unsaved changes</span>` : ''}</div></div>
-      <div class="row wrap"><button class="btn btn-sm" data-action="editor-preview">${icon('eye', 'sm')}Preview student view</button>
+      <div class="row wrap"><button class="btn btn-sm" data-action="preview-student" data-lid="${lab.id}">${icon('eye', 'sm')}Preview as Student</button>
         ${latestReady(lab) && !lab.archived ? html`<button class="btn btn-sm" data-action="assign-open" data-lid="${lab.id}">${icon('send', 'sm')}Assign</button>` : ''}</div></div>
     ${assigned.length ? html`<div class="notice">${icon('lock')}<div>${assigned.map((a) => html`<div><strong>Version ${versionById(lab, a.versionId).number}</strong> is assigned to ${classById(a.classId).name} · ${a.periodIds.map((p) => shortPeriod(periodName(a.classId, p))).join(', ')}.</div>`)}
       <div class="small" style="margin-top:4px">${latest.locked ? `Saving creates version ${latest.number + 1}. Students in those sessions keep the version they were given.` : `You’re editing version ${latest.number}, which isn’t assigned. Sessions already assigned won’t change.`}</div></div></div>` : ''}
     ${ed.readyErrors.length ? html`<div class="error-summary" role="alert" id="ed-errors"><strong>Fix these before marking it Ready to Assign:</strong><ul>${ed.readyErrors.map((e) => html`<li>${e}</li>`)}</ul></div>` : ''}
     <div class="import-grid" style="grid-template-columns:minmax(0,1.5fr) minmax(280px,0.75fr)">
       <div class="stack" style="min-width:0">
-        ${procedureEditor('ui.editorDraft.content', c, { errors: ed.readyErrors })}
+        ${procedureEditor('ui.editorDraft.content', c, { errors: ed.readyErrors, mode: 'class' })}
         <div class="sticky-actions">
           <button class="btn btn-ghost" data-action="editor-discard"${attr(!dirty, 'disabled')}>Discard changes</button><span class="spacer"></span>
           <button class="btn" data-action="editor-save" data-state="draft">${icon('check')}Save draft</button>
@@ -188,6 +188,7 @@ function labEditorView(id) {
       </div>
       <aside class="stack orig-col" style="min-width:0">
         <section class="card card-pad">${flagsPanel(flags, 'ui.editorDraft.content')}</section>
+        ${releaseSection(lab)}
         <section class="card card-pad stack tight" aria-labelledby="vh-h"><h2 id="vh-h">Versions</h2>
           ${[...lab.versions].reverse().map((v) => { const uses = assigned.filter((a) => a.versionId === v.id); return html`<div class="row between" style="padding:6px 0;border-bottom:1px dashed var(--line)"><div><strong class="small">Version ${v.number}</strong><div class="xs muted">${v.state === 'ready' ? 'Ready' : 'Draft'} · ${fmtDayTime(v.createdAt)}</div></div>
             ${uses.length ? html`<span class="pill tone-blue">${icon('lock')}Assigned</span>` : v.state === 'ready' ? html`<span class="pill tone-accent">${icon('check')}Ready</span>` : html`<span class="pill tone-idle">${icon('pencil')}Draft</span>`}</div>`; })}

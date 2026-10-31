@@ -616,3 +616,62 @@ tr.clickable:hover td { background: var(--surface-2); }
 .kbd { font-family: var(--font-mono); font-size: 0.78rem; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
 .hide-sm { }
 @media (max-width: 640px) { .hide-sm { display: none !important; } }
+
+/* ---------- Phase 2: workspaces, student, live session ---------- */
+.ws-switch { display: flex; flex-direction: column; gap: 4px; padding: 0 8px 12px; }
+.new-wrap { position: relative; padding: 0 8px 12px; }
+.avatar.lg { width: 64px; height: 64px; font-size: 1.2rem; }
+img.avatar { object-fit: cover; padding: 0; }
+.btn-lg { min-height: 46px; padding: 10px 18px; font-size: 1rem; border-radius: 12px; }
+.check-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.live-hero { border: 2px solid var(--accent); background: linear-gradient(0deg, var(--accent-soft), var(--surface) 70%); }
+.cp-block { list-style: none; border: 1px dashed color-mix(in srgb, var(--wait) 55%, var(--line)); background: var(--wait-soft); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.live-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px 16px; box-shadow: var(--shadow); }
+.live-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1080px) { .live-grid { grid-template-columns: minmax(0, 1fr); } }
+.setup-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .setup-grid { grid-template-columns: minmax(0, 1fr); } }
+.cam-box { position: relative; aspect-ratio: 16 / 9; background: #0e1a1d; border-radius: var(--r); overflow: hidden; display: grid; place-items: center; }
+.cam-box.compact { max-height: 46vh; }
+.cam-box video { width: 100%; height: 100%; object-fit: contain; background: #0e1a1d; }
+.cam-empty { color: #d5e3e5; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 18px; max-width: 46ch; }
+.cam-empty .ico { width: 28px; height: 28px; }
+.cam-paused { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 20, 22, 0.72); color: #fff; font-weight: 700; gap: 6px; }
+.ind { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 0.8rem; }
+.ind strong { font-weight: 700; }
+.current-step { border: 2px solid color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.cp-panel { border-color: color-mix(in srgb, var(--wait) 55%, var(--line)); }
+.teacher-says { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 10px 10px 0; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+.teacher-says .instr { font-size: 1.12rem; line-height: 1.55; color: var(--ink); }
+.cp-img { max-width: 100%; max-height: 260px; border-radius: 10px; border: 1px solid var(--line); object-fit: contain; align-self: flex-start; }
+.cp-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.guide { border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line)); background: var(--blue-soft); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.guide.big p:last-child { font-size: 1.05rem; }
+.guide.g-help_recommended { border-color: var(--warn); background: var(--warn-soft); }
+.guide.g-unclear_view { border-style: dashed; }
+.mini-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; }
+.mini-steps li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; color: var(--muted); }
+.mini-steps li .num { width: 22px; height: 22px; border-radius: 6px; background: var(--surface-3); display: grid; place-items: center; font-family: var(--font-mono); font-size: 0.75rem; }
+.mini-steps li.done { color: var(--ink); }
+.mini-steps li.done .ico { color: var(--ok); }
+.mini-steps li.now { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
+.mini-steps li.cp { padding-left: 22px; font-size: 0.8rem; }
+.mini-steps li.cp .ico { color: var(--wait); }
+.help-btn { width: 100%; border: 2px solid var(--wait); color: var(--wait); background: var(--surface); }
+.help-btn:hover { background: var(--wait-soft); }
+/* teacher authoring */
+.cp-add-row { display: flex; justify-content: center; margin: -2px 0; }
+.cp-edit { border: 1.5px dashed color-mix(in srgb, var(--wait) 60%, var(--line)); background: color-mix(in srgb, var(--wait-soft) 55%, var(--surface)); border-radius: var(--r); margin-left: 22px; }
+.cp-edit-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px dashed color-mix(in srgb, var(--wait) 40%, var(--line)); }
+.cp-edit-head .ico { color: var(--wait); }
+.cp-edit-body { padding: 12px; }
+.cp-settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cp-settings .span-all { grid-column: 1 / -1; }
+@media (max-width: 760px) { .cp-settings { grid-template-columns: minmax(0, 1fr); } .cp-edit { margin-left: 0; } }
+.q-edit { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.teacher-only { border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px; background: var(--surface-2); }
+.rel-row { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr); gap: 10px; align-items: center; }
+@media (max-width: 640px) { .rel-row { grid-template-columns: minmax(0, 1fr); } }
+.join-links { background: var(--surface); border-radius: 10px; padding: 8px 10px; border: 1px solid var(--line); margin-top: 6px; }
+
+.guide .msg-meta { display: flex; gap: 6px 8px; align-items: center; flex-wrap: wrap; font-size: 0.76rem; color: var(--muted); }

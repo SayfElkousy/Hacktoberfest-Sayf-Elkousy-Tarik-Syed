@@ -16,8 +16,8 @@ function listEditor(path, items, { label, idBase, placeholder, addLabel }) {
     </div></div>`;
 }
 
-function procedureEditor(path, c, { errors = [], hideTiming = false } = {}) {
-  const p = pidOf(path);
+function procedureEditor(path, c, { errors = [], hideTiming = false, mode = 'class' } = {}) {
+  const p = pidOf(path); normalizeContent(c);
   return html`<div class="editor" data-key="editor-${p}">
     <section class="card card-pad stack" aria-labelledby="${p}-basics">
       <h2 id="${p}-basics">Basics</h2>
@@ -30,6 +30,7 @@ function procedureEditor(path, c, { errors = [], hideTiming = false } = {}) {
       </div>
       ${listEditor(`${path}.objectives`, c.objectives, { label: 'Learning objectives', idBase: `${p}-obj`, addLabel: 'Add objective' })}
     </section>
+    ${mode === 'class' ? studentInfoSection(path, p, c) : mode === 'research' ? researchFieldsSection(path, p, c) : ''}
 
     <section class="card card-pad stack" aria-labelledby="${p}-mats">
       <div class="row between"><h2 id="${p}-mats">Materials and quantities</h2><span class="hint">Quantities are per group unless you choose otherwise.</span></div>
@@ -52,7 +53,7 @@ function procedureEditor(path, c, { errors = [], hideTiming = false } = {}) {
 
     <section class="stack" aria-labelledby="${p}-steps-h">
       <div class="row between"><h2 id="${p}-steps-h">Procedure steps</h2><span class="hint num">${plural(c.steps.length, 'step')} · ${stepsMinutes(c)} min planned</span></div>
-      ${c.steps.map((s, i) => stepEditor(path, p, s, i, c.steps.length, errors))}
+      ${c.steps.map((s, i) => html`${stepEditor(path, p, s, i, c.steps.length, errors, mode)}${checkpointSlot(path, p, c, s, i)}`)}
       <button class="btn btn-sm" style="align-self:flex-start" id="${p}-step-add" data-action="step-add" data-path="${path}.steps">${icon('plus', 'sm')}Add step</button>
     </section>
 
@@ -64,7 +65,7 @@ function procedureEditor(path, c, { errors = [], hideTiming = false } = {}) {
   </div>`;
 }
 
-function stepEditor(path, p, s, i, n, errors) {
+function stepEditor(path, p, s, i, n, errors, mode = 'class') {
   const sp = `${path}.steps.${i}`; const id = `${p}-step-${i}`;
   const noMin = !s.minutes;
   return html`<article class="step-edit" data-key="${p}-s-${s.id}" aria-labelledby="${id}-lbl">
@@ -91,7 +92,7 @@ function stepEditor(path, p, s, i, n, errors) {
             <button class="btn btn-ghost btn-icon btn-sm" data-action="list-remove" data-path="${sp}.inputs" data-index="${j}" aria-label="Remove input ${j + 1}">${icon('x', 'sm')}</button></div>`)}
           <button class="btn btn-xs btn-ghost" style="align-self:flex-start" data-action="input-add" data-path="${sp}.inputs">${icon('plus', 'sm')}Add measurement</button>
         </div></div>
-      <div class="span-2"><label class="check"><input type="checkbox" data-change="cp-toggle" data-path="${path}" data-sid="${s.id}"${attr(!!checkpointAfter(getPath(S, path) || { checkpoints: [] }, s.id), 'checked')}><span>Teacher check after this step<span class="hint" style="display:block">Students wait for your approval before the next step.</span></span></label></div>
+      ${mode === 'research' ? field({ label: 'Expected observation', id: `${id}-exp`, bind: `${sp}.expected`, value: s.expected || '', cls: 'span-2', opt: true, hint: 'Shown to participants labeled as an expectation, not a result.' }) : ''}
     </div>
   </article>`;
 }

@@ -160,6 +160,7 @@ function planPreview(d) {
       <button class="btn btn-sm btn-primary" data-action="designer-assign">${icon('send', 'sm')}Assign to class</button>
     </div>
     <div class="card-body stack loose">
+      ${d.pending ? reviewCard(d) : ''}
       ${d.editing ? html`<p class="hint">Setup, cleanup and lab time come from Class logistics. Changes here update the plan’s totals right away.</p>${procedureEditor('designer.plan', plan, { hideTiming: true })}` : planReadView(plan, r, revised)}
     </div>
   </section>`;
@@ -278,7 +279,7 @@ async function designerAsk(question) {
   try {
     const res = mode === 'live' ? await callLive('revise', question) : (await sleep(700), simRevise(d, question));
     d.chat = d.chat.filter((m) => m.id !== pending.id);
-    applyRevision(res, mode);
+    proposeRevision(res, mode);
   } catch (e) {
     d.chat = d.chat.filter((m) => m.id !== pending.id);
     if (e && ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(e.code)) AI.denied = true;
@@ -296,7 +297,7 @@ function applyRevision(res, source) {
   }
   if (res.plan) { d.revised = revisedSteps(old, res.plan); d.plan = res.plan; d.planMeta = { source, at: Date.now() }; }
   const check = planDiff(old, d.plan, oldRes, computeResources(d.plan, d));
-  pushMsg({ role: 'assistant', source, text: res.reply, changes: res.changes || [], check });
+  pushMsg({ role: 'assistant', source, text: 'Accepted. The plan was updated and the changed steps are highlighted.', changes: res.changes || [], check });
 }
 
 function designerContent() {

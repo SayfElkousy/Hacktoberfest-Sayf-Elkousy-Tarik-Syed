@@ -34,7 +34,7 @@ function liveView() {
     <section class="card card-pad stack" aria-labelledby="ls-title">
       <div class="session-head">
         <div class="stack tight" style="min-width:0"><div class="row wrap">${sessionPill(sess.status)}<span class="tag">${icon('lock', 'sm')}Version ${v.number}</span></div>
-          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span></div>
+          <h2 id="ls-title" style="font-size:1.4rem">${c.title}</h2><span class="small muted">${cls.name} · ${periodName(cls.id, sess.periodId)} · ${plural(ps.length || groupsAvailable, 'group')}</span>${sess.status !== 'completed' ? joinCodeChip(cls) : ''}</div>
         ${sess.status === 'scheduled' ? html`<div class="stack tight" style="align-items:flex-end"><span class="small muted">Scheduled ${sess.scheduledFor === todayISO() ? 'for today' : 'for ' + fmtDate(new Date(sess.scheduledFor + 'T12:00').getTime())} · ${plannedMinutes(c)} min planned</span>
           ${groupsAvailable ? html`<button class="btn btn-primary" data-action="session-start" data-sid="${sess.id}">${icon('play')}Start session</button>`
             : html`<a class="btn" href="#class-${cls.id}" data-action="class-period-go" data-cid="${cls.id}" data-pid="${sess.periodId}">${icon('layers')}Arrange lab groups first</a>`}</div>`
@@ -109,6 +109,7 @@ function groupTile(p, sess, c, gs, now) {
     </div>
     ${gs.key === 'behind' ? html`<span class="small" style="color:var(--warn)">${icon('hourglass', 'sm')} ${fmtMins(gs.behindMs)} past the planned finish of this step</span>` : ''}
     ${gs.key === 'lost' ? html`<span class="small muted">${icon('wifiOff', 'sm')} Device not responding. The group may still be working.</span>` : ''}
+    ${tileExtras(p)}
     ${p.atCheckpoint || help.length ? html`<div class="gt-flags">
       ${p.atCheckpoint ? cpFlag(p, sess, c) : ''}
       ${help.map((h) => html`<span class="pill tone-${HELP_STATUS[h.status].tone}">${icon('lifebuoy')}${h.category} · ${HELP_STATUS[h.status].label} ${tickSince(h.createdAt)}</span>`)}
@@ -132,6 +133,7 @@ function groupDrawer(pid) {
           <span class="xs muted">On this step ${tickStep(p, sess)} · planned ${step.minutes || '?'} min${gs.key === 'behind' ? ` · ${fmtMins(gs.behindMs)} past plan` : ''}</span></div>`}</section>
       <section class="drawer-section"><h3>Pending teacher approvals</h3>
         ${p.atCheckpoint ? cpFlag(p, sess, c, true) : html`<p class="small muted">None.</p>`}</section>
+      ${drawerExtras(p, sess, c)}
       <section class="drawer-section"><h3>Open help requests</h3>
         ${open.length ? open.map((h) => html`<div class="panel stack tight" data-key="dh-${h.id}"><div class="row wrap">${catTag(h.category)}${helpPill(h.status)}<span class="xs muted">waiting ${tickSince(h.createdAt)}</span></div>
           <span class="small" style="white-space:pre-wrap">${h.message}</span>
@@ -204,7 +206,7 @@ function cpFlag(p, sess, c, wide = false) {
   const cp = checkpointById(c, p.atCheckpoint); if (!cp) return '';
   const st = Engine.gateState(classTrack(sess, p.groupId), cp);
   const label = st.waitingOn === 'approval' ? 'Approval pending' : st.waitingOn === 'revision' ? 'Returned for revision' : st.waitingOn === 'correct' ? 'Revising answers' : 'Working on response';
-  const btn = st.approval === 'pending' ? html`<button class="btn btn-xs btn-primary" data-action="checkpoint-approve" data-pid="${p.id}">${icon('check', 'sm')}Approve</button>` : '';
+  const btn = html`<button class="btn btn-xs ${st.approval === 'pending' ? 'btn-primary' : ''}" data-action="cp-review" data-pid="${p.id}" data-cp="${cp.id}">${icon(st.approval === 'pending' ? 'check' : 'eye', 'sm')}${st.approval === 'pending' ? 'Review' : 'Responses'}</button>`;
   return wide ? html`<div class="panel row between wrap"><span>${icon('clipboard')} <strong>${cp.title}</strong> · ${label}</span>${btn}</div>`
     : html`<span class="pill tone-wait">${icon('clipboard')}${cp.title} · ${label}</span>${btn}`;
 }

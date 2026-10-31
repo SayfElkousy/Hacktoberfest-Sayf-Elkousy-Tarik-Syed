@@ -81,7 +81,8 @@ function classDetailView(id) {
         <span class="small" style="max-width:44ch">Students sign in to Labby, choose <strong>Join a class</strong>, enter this code, then pick their period. Codes aren’t case-sensitive.</span>
         <div class="row wrap" style="margin-top:6px"><button class="btn btn-primary" data-action="copy-code" data-cid="${cls.id}">${icon('copy')}Copy code</button>
           <button class="btn btn-ghost" data-action="regen-ask" data-cid="${cls.id}">${icon('refresh')}Regenerate code</button></div>
-        <span class="xs muted">Code created ${fmtDayTime(cls.codeUpdatedAt)}</span>
+        <span class="xs muted">Code created ${fmtDayTime(cls.codeUpdatedAt)}${cls.joinEnabled === false ? ' · joining is turned off' : ''}</span>
+        ${joinLinksBlock(cls)}
       </div>
       <div class="join-preview" aria-label="What students see when they join">
         <div class="jp-step"><span class="eyebrow">Student step 1</span><span class="small strong">Enter class code</span><span class="fake-input">${cls.joinCode}</span></div>
@@ -147,11 +148,12 @@ function classLabsTab(cls) {
   const sessions = S.sessions.filter((s) => s.classId === cls.id).sort((a, b) => sessionRank(a) - sessionRank(b) || b.scheduledFor.localeCompare(a.scheduledFor));
   if (!sessions.length) return html`<div class="card">${emptyState({ ico: 'flask', title: 'No labs assigned yet', text: 'Assign a lab from your library to one or more periods. Each period gets its own live session.', actions: html`<button class="btn btn-primary" data-action="assign-open" data-cid="${cls.id}">${icon('send')}Assign a lab</button>` })}</div>`;
   return html`<div class="table-wrap"><table><caption class="sr-only">Assigned and completed labs</caption>
-    <thead><tr><th>Lab</th><th>Period</th><th>Scheduled</th><th>Status</th><th>Groups</th><th></th></tr></thead>
+    <thead><tr><th>Lab</th><th>Period</th><th>Scheduled</th><th>Status</th><th>Groups</th><th>Students see it</th><th></th></tr></thead>
     <tbody>${sessions.map((s) => { const lab = labById(s.labId); const v = versionById(lab, s.versionId); const ps = progressFor(s.id);
       return html`<tr data-key="cs-${s.id}"><td><a class="lib-title" href="#lab-${lab.id}">${v.content.title}</a><div class="xs muted">Version ${v.number}</div></td>
         <td>${periodName(cls.id, s.periodId)}</td><td class="num">${s.scheduledFor === todayISO() ? 'Today' : fmtDate(new Date(s.scheduledFor + 'T12:00').getTime())}</td>
         <td>${sessionPill(s.status)}</td><td class="num small">${s.status === 'scheduled' ? groupsIn(cls.id, s.periodId).length : `${ps.filter((p) => p.finishedAt).length}/${ps.length} finished`}</td>
+        <td>${(() => { const as = S.assignments.find((x) => x.id === s.assignmentId); return html`<label class="check small" for="pub-${s.id}"><input type="checkbox" id="pub-${s.id}" data-change="as-publish" data-aid="${as.id}"${attr(as.published !== false, 'checked')}><span>Published</span></label>`; })()}</td>
         <td style="text-align:right">${s.status === 'scheduled' ? html`<button class="btn btn-sm" data-action="open-session" data-sid="${s.id}" data-where="live">${icon('play', 'sm')}Open to start</button>`
           : html`<button class="btn btn-sm" data-action="open-session" data-sid="${s.id}" data-where="live">${s.status === 'completed' ? 'View results' : html`${icon('activity', 'sm')}Live progress`}</button>`}</td></tr>`; })}
     </tbody></table></div>`;
@@ -190,7 +192,9 @@ function assignModal() {
         ${cls.periods.map((p) => { const ng = groupsIn(cls.id, p.id).length; return html`<label class="check" for="as-p-${p.id}"><input type="checkbox" id="as-p-${p.id}" data-action="as-period" data-pid="${p.id}"${attr(m.periodIds.includes(p.id), 'checked')}>
           <span>${p.name} <span class="muted small">· ${enrolledCount(cls.id, p.id)} students, ${plural(ng, 'lab group')}</span>${!ng ? html`<span class="hint" style="display:block">Arrange groups before this session starts.</span>` : ''}</span></label>`; })}
       </fieldset>` : ''}
-      ${field({ label: 'Lab date', id: 'as-date', bind: 'U.modal.date', value: m.date, type: 'date' })}`;
+      <div class="form-grid">${field({ label: 'Lab date', id: 'as-date', bind: 'U.modal.date', value: m.date, type: 'date' })}${field({ label: 'Start time', id: 'as-time', bind: 'U.modal.time', value: m.time || '', type: 'time', opt: true })}</div>
+      ${checkField({ label: 'Publish to students now', id: 'as-pub', bind: 'U.modal.published', checked: m.published !== false, hint: 'Students see what your release settings allow. You can unpublish from the class page.' })}
+      ${checkField({ label: 'Let students start at the scheduled time without me opening the session', id: 'as-auto', bind: 'U.modal.autoOpen', checked: !!m.autoOpen, hint: 'Off by default: the session opens only when you start it in Live Progress.' })}`;
   return modalShell({ title: 'Assign a lab', sub: 'Each selected period gets its own session you can start from Live Progress.', body,
     foot: classes.length && labs.length ? html`<button class="btn" data-action="modal-close">Cancel</button><button class="btn btn-primary" data-action="assign-submit">${icon('send')}Assign lab</button>` : '' });
 }
@@ -202,7 +206,7 @@ function submitAssign() {
   if (!cls) { m.error = 'Choose a class.'; commit(); return; }
   if (!m.periodIds.length) { m.error = 'Choose at least one period.'; commit(); return; }
   if (!m.date) { m.error = 'Choose a date.'; commit(); return; }
-  createAssignment(lab.id, v.id, cls.id, m.periodIds, m.date);
+  createAssignment(lab.id, v.id, cls.id, m.periodIds, m.date, { time: m.time, published: m.published !== false, autoOpen: !!m.autoOpen });
   const names = m.periodIds.map((p) => periodName(cls.id, p)).join(', ');
   U.modal = null; commit();
   toast(`${v.content.title} assigned to ${cls.name} · ${names}.`, 'send');

@@ -11,7 +11,7 @@ const ST = (title, minutes, instructions, opts = {}) => ({
 });
 
 function specificHeatContent() {
-  return {
+  const c = {
     title: 'Specific Heat of Metals', subject: 'Chemistry', level: 'AP / IB', setupMinutes: 0, cleanupMinutes: 0,
     objectives: [
       'Determine the specific heat of an unknown metal with a coffee-cup calorimeter',
@@ -53,10 +53,11 @@ function specificHeatContent() {
     ],
     assumptions: [], questions: [],
   };
+  return addSpecificHeatExtras(c);
 }
 
 function catalaseContent() {
-  return {
+  const c = {
     title: 'Catalase Activity and Temperature', subject: 'Biology', level: 'High school (grades 9–10)', setupMinutes: 5, cleanupMinutes: 5,
     objectives: ['Observe how the enzyme catalase breaks down hydrogen peroxide', 'Measure how temperature affects enzyme activity', 'Explain the results in terms of enzyme shape and denaturation'],
     materials: [
@@ -77,6 +78,7 @@ function catalaseContent() {
     precautions: ['3% hydrogen peroxide can irritate eyes and skin: wear goggles and rinse spills with water.', 'Only the teacher prepares the boiled potato batch.'],
     assumptions: [], questions: [],
   };
+  return addCatalaseExtras(c);
 }
 
 function titrationContent() {
@@ -217,8 +219,8 @@ function makeSeed(now = Date.now()) {
   const studentUser = { id: uid(), name: 'Jordan Lee', email: 'jordan.lee@students.northgate.edu', role: 'student', school: 'Northgate High School', createdAt: now - 60 * 86400000, demo: true };
   const indieUser = { id: uid(), name: 'Priya Raman', email: 'priya.raman@example.com', role: 'independent', school: '', createdAt: now - 20 * 86400000, demo: true };
 
-  const ap = { id: uid(), teacherId: teacher.id, name: 'AP Chemistry', subject: 'Chemistry', level: 'AP / IB', description: 'Second-year chemistry with a double lab block on Fridays.', joinCode: 'K7Q-M4X', codeUpdatedAt: now - 60 * 86400000, createdAt: now - 60 * 86400000, periods: [{ id: uid(), name: 'Period 2', expected: 24 }, { id: uid(), name: 'Period 4', expected: 26 }, { id: uid(), name: 'Period 6', expected: 22 }] };
-  const bio = { id: uid(), teacherId: teacher.id, name: 'Biology Honors', subject: 'Biology', level: 'High school (grades 9–10)', description: 'Ninth-grade honors biology.', joinCode: 'TWE-9HC', codeUpdatedAt: now - 58 * 86400000, createdAt: now - 58 * 86400000, periods: [{ id: uid(), name: 'Period 1', expected: 28 }, { id: uid(), name: 'Period 3', expected: 28 }] };
+  const ap = { id: uid(), teacherId: teacher.id, name: 'AP Chemistry', subject: 'Chemistry', level: 'AP / IB', description: 'Second-year chemistry with a double lab block on Fridays.', joinCode: 'K7Q-M4X', joinEnabled: true, previousCodes: [{ code: 'B3R-77D', retiredAt: now - 61 * 86400000 }], codeUpdatedAt: now - 60 * 86400000, createdAt: now - 60 * 86400000, periods: [{ id: uid(), name: 'Period 2', expected: 24 }, { id: uid(), name: 'Period 4', expected: 26 }, { id: uid(), name: 'Period 6', expected: 22 }] };
+  const bio = { id: uid(), teacherId: teacher.id, name: 'Biology Honors', subject: 'Biology', level: 'High school (grades 9–10)', description: 'Ninth-grade honors biology.', joinCode: 'TWE-9HC', joinEnabled: true, previousCodes: [], codeUpdatedAt: now - 58 * 86400000, createdAt: now - 58 * 86400000, periods: [{ id: uid(), name: 'Period 1', expected: 28 }, { id: uid(), name: 'Period 3', expected: 28 }] };
   const [P2, P4, P6] = ap.periods; const [B1, B3] = bio.periods;
 
   const enrollments = []; const groups = [];
@@ -284,7 +286,7 @@ function makeSeed(now = Date.now()) {
     buildProgress(live, gP4[2], shV1.content, 2, now - 15 * MIN, { lastActivityAt: now - 4 * MIN }),
     buildProgress(live, gP4[3], shV1.content, 4, now - 7 * MIN, { lastActivityAt: now - 6 * MIN }),
     buildProgress(live, gP4[4], shV1.content, 3, now - 8 * MIN, { lastActivityAt: now - 6 * MIN, connection: 'lost' }),
-    buildProgress(live, gP4[5], shV1.content, 6, now - 3 * MIN, { lastActivityAt: now - 1 * MIN }),
+    buildProgress(live, gP4[5], shV1.content, 3, now - 2 * MIN, { lastActivityAt: now - 1 * MIN }),
   ];
   p4[1].activity.push({ at: now - 3 * MIN, text: 'Asked for teacher check: Prepare the calorimeter' });
   p4[3].activity.push({ at: now - 8 * MIN, text: 'Teacher approved checkpoint: Prepare the calorimeter' });
@@ -334,7 +336,7 @@ function makeSeed(now = Date.now()) {
     mode: 'live', draftMsg: '', tab: 'inputs', errors: [],
   };
 
-  return {
+  const st = {
     version: 2,
     cpRecords: [], events: [], processed: [],
     users: [teacher, studentUser, indieUser],
@@ -348,4 +350,7 @@ function makeSeed(now = Date.now()) {
     ui: { ctx: { classId: ap.id, periodId: P4.id, sessionId: sSH4.id }, liveFilter: 'all', liveSort: 'name', helpTab: 'open', libQuery: '', libStatus: 'all', libSubject: 'all', classTab: 'roster', classPeriod: {}, importDraft: null, editorDraft: null, demoGroupId: null, createClass: null },
     demo: { autoplay: false, lastSeen: now, seededAt: now },
   };
+  seedStudent(st, { now, teacher, studentUser, ap, bio, P4, B1, B3, gP4, labSH, labCat, shV1, live: sSH4, sSH2, asSH, asTit });
+  seedResearch(st, { now, teacher, studentUser, indieUser });
+  return st;
 }

@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 export const dataDir = join(root, 'data');
 export const distDir = join(root, 'dist');
+export const labbyPage = resolve(root, '..', 'dist', 'labby.html');
 /** Large generated files. Kept out of the project so cloud-synced folders don't upload them. */
 export const cacheDir = join(homedir(), '.cache', 'student-assistant');
 

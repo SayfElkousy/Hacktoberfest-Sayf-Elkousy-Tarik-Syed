@@ -1,4 +1,5 @@
 <title>Labby</title>
+<script>document.documentElement.dataset.theme = 'light';</script>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Labby: plan classroom labs with an AI assistant, assign them to class periods, follow each lab group live, and answer help requests in order.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -4353,7 +4354,7 @@ function activeLabCard(sess) {
       </div>
     </div>
     <div class="card-foot"><button class="btn btn-primary" data-action="open-session" data-sid="${sess.id}" data-where="live">${icon('activity')}Open Live Progress</button>
-      <span class="small muted">Statuses update as students work. In this demo, live events come from the demo controls.</span></div>
+      <span class="small muted">${StudentSite.connected() ? 'Statuses update from the student site as students work.' : 'Statuses update as students work. In this demo, live events come from the demo controls.'}</span></div>
   </section>`;
 }
 
@@ -5264,6 +5265,7 @@ function liveView() {
       ${sess.status === 'paused' ? html`<div class="notice warn">${icon('pause')}<div>Paused at ${fmtClock(sess.pausedAt)}. Session and step timers are frozen; help request wait times keep counting.</div></div>` : ''}
       ${sess.status !== 'scheduled' && ps.length ? pacingChart(sess, c, ps, statuses, now) : ''}
     </section>
+    ${StudentSite.liveSection(sess)}
     ${sess.status === 'scheduled' ? html`<div class="card">${emptyState({ ico: 'play', title: 'This session hasn’t started', text: groupsAvailable ? `When you start it, ${plural(groupsAvailable, 'group')} can begin step 1 and their progress will appear here.` : 'This period has no lab groups yet. Arrange students into groups on the class page, then start the session.', compact: true })}</div>` : html`
     <div class="live-tools">
       <div class="chips" role="group" aria-label="Filter groups by status">
@@ -5278,7 +5280,7 @@ function liveView() {
     </div>
     ${list.length ? html`<div class="groups-grid">${list.map((p) => groupTile(p, sess, c, statuses.get(p.id), now))}</div>`
       : html`<div class="card">${emptyState({ ico: 'search', title: 'No groups with this status', text: 'Choose another filter to see the rest of the class.', compact: true, actions: html`<button class="btn btn-sm" data-action="live-filter" data-f="all">Show all groups</button>` })}</div>`}`}
-    ${sess.status === 'active' || sess.status === 'paused' ? demoPanel(sess, ps) : ''}
+    ${(sess.status === 'active' || sess.status === 'paused') && !StudentSite.connected() ? demoPanel(sess, ps) : ''}
     ${openHelp ? html`<p class="small"><a href="#help">${icon('lifebuoy', 'sm')} ${plural(openHelp, 'open help request')} for this session in the Help Queue</a></p>` : ''}
   </div>
   ${U.drawer ? groupDrawer(U.drawer) : ''}`;
@@ -5554,6 +5556,18 @@ const StudentSite = {
   state: 'off', // off | connected | interrupted
   published: {}, // session id -> what was last sent
   helpOpen: new Set(),
+  live: {}, // session id -> the teams and students last read from the site
+  ahead: new Set(),
+
+  /** True once real students can reach this session, so demo data should stay out of the way. */
+  connected() { return this.state === 'connected'; },
+
+  /** Hosted by the student site itself, Labby can connect with no setup. */
+  async autoConnect() {
+    if (this.config().token || location.pathname !== '/labby') return;
+    const res = await fetch('/api/local-token');
+    if (res.ok) this.saveConfig({ url: location.origin, token: await res.text() });
+  },
 
   config() {
     try { return { url: 'http://localhost:8080', token: '', ...JSON.parse(localStorage.getItem(this.KEY) || '{}') }; }
@@ -5629,7 +5643,14 @@ const StudentSite = {
 
     for (const student of students) {
       const joined = `sa-join-${sess.id}-${student.id}`;
-      if (!seenEvent(joined)) { markEvent(joined); logActivity(p, `${student.name} joined from the student site`); changed = true; }
+      if (!seenEvent(joined)) {
+        markEvent(joined);
+        logActivity(p, `${student.name} joined from the student site`);
+        changed = true;
+        // Bring the teacher to the session real students are in.
+        Object.assign(S.ui.ctx, { classId: sess.classId, periodId: sess.periodId, sessionId: sess.id });
+        toast(`${student.name} joined ${team.name}.`, 'users');
+      }
 
       for (const m of student.measurements) {
         const step = this.stepAt(c, m.stepId);
@@ -5666,7 +5687,15 @@ const StudentSite = {
       const stepId = c.steps[i].id;
       const res = LabSessionAPI.completeStep({ eventId: `sa-step-${sess.id}-${team.id}-${stepId}`, sessionId: sess.id, groupId: team.id, stepId, participantId: null });
       if (res.status === 'ok') changed = true;
-      if (res.status === 'blocked') break;
+      if (res.status === 'blocked') {
+        const key = `${team.id}:${p.atCheckpoint}`;
+        if (!this.ahead.has(key)) {
+          this.ahead.add(key);
+          logActivity(p, `Students have moved ahead on the student site. This group's steps catch up once the checkpoint is cleared.`);
+          changed = true;
+        }
+        break;
+      }
     }
 
     return changed;
@@ -5706,7 +5735,10 @@ const StudentSite = {
   },
 
   async tick() {
-    if (typeof S === 'undefined' || !S || !this.config().token) { this.state = 'off'; return; }
+    if (typeof S === 'undefined' || !S) return;
+    const before = JSON.stringify([this.state, this.live]);
+    await this.autoConnect().catch(() => {});
+    if (!this.config().token) { this.state = 'off'; return; }
     try {
       let changed = false;
       for (const sess of this.sessions()) {
@@ -5715,6 +5747,12 @@ const StudentSite = {
         const code = await this.publish(sess);
         const { lab, students, teams } = await this.call(`/labs/${encodeURIComponent(code)}`);
         if (!lab.plan) continue;
+        this.live[sess.id] = teams.filter((team) => team.members.length).map((team) => ({
+          ...team,
+          students: students.filter((s) => s.teamId === team.id).map((s) => ({
+            name: s.name, online: s.online, phase: s.phase, step: s.currentStep + 1, measurements: s.measurements.length, answers: s.answers.length,
+          })),
+        }));
         for (const team of teams) {
           if (!groupById(team.id)) continue;
           const members = students.filter((s) => s.teamId === team.id);
@@ -5723,16 +5761,33 @@ const StudentSite = {
         }
       }
       this.state = 'connected';
-      if (changed) commit();
+      if (changed || JSON.stringify([this.state, this.live]) !== before) commit();
     } catch (e) {
       this.state = 'interrupted';
       console.warn(e);
+      if (JSON.stringify([this.state, this.live]) !== before) commit();
     }
+  },
+
+  /** Where each group's students really are, even while a checkpoint holds Labby's step back. */
+  liveSection(sess) {
+    if (this.state === 'off') return '';
+    const teams = this.live[sess.id] || [];
+    const total = (sessionContent(sess) || { steps: [] }).steps.length;
+    const place = (s) => (s.phase === 'components' ? 'Checking equipment' : s.phase === 'done' ? 'Finished' : `Step ${s.step} of ${total}`);
+    return html`<section class="card card-pad stack" aria-labelledby="ss-live-h">
+      <div class="row between"><h2 id="ss-live-h">Live from the student site</h2><span class="hint">${this.state === 'connected' ? 'Connected' : 'Connection interrupted'}</span></div>
+      ${sess.status !== 'active' ? html`<p class="small muted">Start this session to open it to students.</p>`
+        : !teams.length ? html`<p class="small muted">Waiting for students to join with code ${classById(sess.classId).joinCode}.</p>`
+        : html`<div class="table-wrap"><table class="table"><thead><tr><th>Group</th><th>Student</th><th>Where they are</th><th>Measurements</th><th>Answers</th><th>Device</th></tr></thead>
+          <tbody>${teams.flatMap((team) => team.students.map((s) => html`<tr><td>${team.name}</td><td>${s.name}</td><td>${place(s)}</td><td>${s.measurements}</td><td>${s.answers}</td><td>${s.online ? 'Online' : 'Offline'}</td></tr>`))}</tbody></table></div>`}
+    </section>`;
   },
 
   start() {
     if (this.timer) return;
     this.timer = setInterval(() => { this.tick(); }, this.POLL_MS);
+    setTimeout(() => { this.tick(); }, 300);
   },
 
   card() {
@@ -5800,7 +5855,7 @@ function helpView() {
         : html`<div class="card">${emptyState({ ico: 'lifebuoy', title: 'No one is waiting', text: scope === 'all' ? 'When students ask for help in any of your classes, their requests line up here in the order they arrive.' : 'Requests from this session will line up here in the order they arrive.', compact: true })}</div>`)
       : (resolved.length ? html`<ol class="hq" style="list-style:none;margin:0;padding:0" aria-label="Resolved requests, most recent first">${resolved.map((h) => helpItem(h, null))}</ol>`
         : html`<div class="card">${emptyState({ ico: 'checkCircle', title: 'Nothing resolved yet', text: 'Resolved requests move here so the queue only shows who still needs you.', compact: true })}</div>`)}
-    ${scope === 'session' && live ? demoPanel(sess, progressFor(sess.id)) : ''}
+    ${scope === 'session' && live && !StudentSite.connected() ? demoPanel(sess, progressFor(sess.id)) : ''}
   </div>`;
 }
 

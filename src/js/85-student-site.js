@@ -15,6 +15,18 @@ const StudentSite = {
   state: 'off', // off | connected | interrupted
   published: {}, // session id -> what was last sent
   helpOpen: new Set(),
+  live: {}, // session id -> the teams and students last read from the site
+  ahead: new Set(),
+
+  /** True once real students can reach this session, so demo data should stay out of the way. */
+  connected() { return this.state === 'connected'; },
+
+  /** Hosted by the student site itself, Labby can connect with no setup. */
+  async autoConnect() {
+    if (this.config().token || location.pathname !== '/labby') return;
+    const res = await fetch('/api/local-token');
+    if (res.ok) this.saveConfig({ url: location.origin, token: await res.text() });
+  },
 
   config() {
     try { return { url: 'http://localhost:8080', token: '', ...JSON.parse(localStorage.getItem(this.KEY) || '{}') }; }
@@ -90,7 +102,14 @@ const StudentSite = {
 
     for (const student of students) {
       const joined = `sa-join-${sess.id}-${student.id}`;
-      if (!seenEvent(joined)) { markEvent(joined); logActivity(p, `${student.name} joined from the student site`); changed = true; }
+      if (!seenEvent(joined)) {
+        markEvent(joined);
+        logActivity(p, `${student.name} joined from the student site`);
+        changed = true;
+        // Bring the teacher to the session real students are in.
+        Object.assign(S.ui.ctx, { classId: sess.classId, periodId: sess.periodId, sessionId: sess.id });
+        toast(`${student.name} joined ${team.name}.`, 'users');
+      }
 
       for (const m of student.measurements) {
         const step = this.stepAt(c, m.stepId);
@@ -127,7 +146,15 @@ const StudentSite = {
       const stepId = c.steps[i].id;
       const res = LabSessionAPI.completeStep({ eventId: `sa-step-${sess.id}-${team.id}-${stepId}`, sessionId: sess.id, groupId: team.id, stepId, participantId: null });
       if (res.status === 'ok') changed = true;
-      if (res.status === 'blocked') break;
+      if (res.status === 'blocked') {
+        const key = `${team.id}:${p.atCheckpoint}`;
+        if (!this.ahead.has(key)) {
+          this.ahead.add(key);
+          logActivity(p, `Students have moved ahead on the student site. This group's steps catch up once the checkpoint is cleared.`);
+          changed = true;
+        }
+        break;
+      }
     }
 
     return changed;
@@ -167,7 +194,10 @@ const StudentSite = {
   },
 
   async tick() {
-    if (typeof S === 'undefined' || !S || !this.config().token) { this.state = 'off'; return; }
+    if (typeof S === 'undefined' || !S) return;
+    const before = JSON.stringify([this.state, this.live]);
+    await this.autoConnect().catch(() => {});
+    if (!this.config().token) { this.state = 'off'; return; }
     try {
       let changed = false;
       for (const sess of this.sessions()) {
@@ -176,6 +206,12 @@ const StudentSite = {
         const code = await this.publish(sess);
         const { lab, students, teams } = await this.call(`/labs/${encodeURIComponent(code)}`);
         if (!lab.plan) continue;
+        this.live[sess.id] = teams.filter((team) => team.members.length).map((team) => ({
+          ...team,
+          students: students.filter((s) => s.teamId === team.id).map((s) => ({
+            name: s.name, online: s.online, phase: s.phase, step: s.currentStep + 1, measurements: s.measurements.length, answers: s.answers.length,
+          })),
+        }));
         for (const team of teams) {
           if (!groupById(team.id)) continue;
           const members = students.filter((s) => s.teamId === team.id);
@@ -184,16 +220,33 @@ const StudentSite = {
         }
       }
       this.state = 'connected';
-      if (changed) commit();
+      if (changed || JSON.stringify([this.state, this.live]) !== before) commit();
     } catch (e) {
       this.state = 'interrupted';
       console.warn(e);
+      if (JSON.stringify([this.state, this.live]) !== before) commit();
     }
+  },
+
+  /** Where each group's students really are, even while a checkpoint holds Labby's step back. */
+  liveSection(sess) {
+    if (this.state === 'off') return '';
+    const teams = this.live[sess.id] || [];
+    const total = (sessionContent(sess) || { steps: [] }).steps.length;
+    const place = (s) => (s.phase === 'components' ? 'Checking equipment' : s.phase === 'done' ? 'Finished' : `Step ${s.step} of ${total}`);
+    return html`<section class="card card-pad stack" aria-labelledby="ss-live-h">
+      <div class="row between"><h2 id="ss-live-h">Live from the student site</h2><span class="hint">${this.state === 'connected' ? 'Connected' : 'Connection interrupted'}</span></div>
+      ${sess.status !== 'active' ? html`<p class="small muted">Start this session to open it to students.</p>`
+        : !teams.length ? html`<p class="small muted">Waiting for students to join with code ${classById(sess.classId).joinCode}.</p>`
+        : html`<div class="table-wrap"><table class="table"><thead><tr><th>Group</th><th>Student</th><th>Where they are</th><th>Measurements</th><th>Answers</th><th>Device</th></tr></thead>
+          <tbody>${teams.flatMap((team) => team.students.map((s) => html`<tr><td>${team.name}</td><td>${s.name}</td><td>${place(s)}</td><td>${s.measurements}</td><td>${s.answers}</td><td>${s.online ? 'Online' : 'Offline'}</td></tr>`))}</tbody></table></div>`}
+    </section>`;
   },
 
   start() {
     if (this.timer) return;
     this.timer = setInterval(() => { this.tick(); }, this.POLL_MS);
+    setTimeout(() => { this.tick(); }, 300);
   },
 
   card() {

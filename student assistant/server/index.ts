@@ -3,7 +3,7 @@ import { createServer as createHttpsServer } from 'node:https';
 import { join } from 'node:path';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
-import { config, distDir } from './config.ts';
+import { config, distDir, labbyPage } from './config.ts';
 import { dashboardRoutes } from './dashboard-routes.ts';
 import { checkGemma, queueDepth, SupersededError } from './gemma.ts';
 import { HttpError } from './http-error.ts';
@@ -22,6 +22,22 @@ app.use(express.json({ limit: '30mb' }));
 
 app.get('/api/health', async (_req, res) => {
   res.json({ gemma: await checkGemma(), voice: speechReady(), queued: queueDepth() });
+});
+
+// Labby, the teacher dashboard, lives in the same repo. Only this laptop's own
+// address serves it, along with the token that connects it without any setup.
+function fromThisLaptop(req: Request): boolean {
+  return req.socket.localPort === config.localPort && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.get('host') ?? '');
+}
+
+app.get('/labby', (req, res, next) => {
+  if (fromThisLaptop(req)) res.sendFile(labbyPage);
+  else next();
+});
+
+app.get('/api/local-token', (req, res) => {
+  if (!fromThisLaptop(req)) throw new HttpError(404, 'Not found');
+  res.type('text/plain').send(config.dashboardToken);
 });
 
 app.use('/api/dashboard', dashboardRoutes);
@@ -55,6 +71,7 @@ createHttpsServer(certificate, app).listen(config.httpsPort, '0.0.0.0', () => {
   for (const address of lanAddresses()) {
     console.log(`  Students:    https://${address}:${config.httpsPort}`);
   }
+  console.log(`  Labby:       http://localhost:${config.localPort}/labby`);
   console.log(`  Test page:   http://localhost:${config.localPort}/teacher-test.html`);
   console.log(`  Dashboard token: ${config.dashboardToken}\n`);
 });

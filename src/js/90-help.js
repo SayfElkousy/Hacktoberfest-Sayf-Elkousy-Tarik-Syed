@@ -30,7 +30,7 @@ function helpView() {
         : html`<div class="card">${emptyState({ ico: 'lifebuoy', title: 'No one is waiting', text: scope === 'all' ? 'When students ask for help in any of your classes, their requests line up here in the order they arrive.' : 'Requests from this session will line up here in the order they arrive.', compact: true })}</div>`)
       : (resolved.length ? html`<ol class="hq" style="list-style:none;margin:0;padding:0" aria-label="Resolved requests, most recent first">${resolved.map((h) => helpItem(h, null))}</ol>`
         : html`<div class="card">${emptyState({ ico: 'checkCircle', title: 'Nothing resolved yet', text: 'Resolved requests move here so the queue only shows who still needs you.', compact: true })}</div>`)}
-    ${scope === 'session' && live ? demoPanel(sess, progressFor(sess.id)) : ''}
+    ${scope === 'session' && live && !StudentSite.connected() ? demoPanel(sess, progressFor(sess.id)) : ''}
   </div>`;
 }
 

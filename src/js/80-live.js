@@ -49,6 +49,7 @@ function liveView() {
       ${sess.status === 'paused' ? html`<div class="notice warn">${icon('pause')}<div>Paused at ${fmtClock(sess.pausedAt)}. Session and step timers are frozen; help request wait times keep counting.</div></div>` : ''}
       ${sess.status !== 'scheduled' && ps.length ? pacingChart(sess, c, ps, statuses, now) : ''}
     </section>
+    ${StudentSite.liveSection(sess)}
     ${sess.status === 'scheduled' ? html`<div class="card">${emptyState({ ico: 'play', title: 'This session hasn’t started', text: groupsAvailable ? `When you start it, ${plural(groupsAvailable, 'group')} can begin step 1 and their progress will appear here.` : 'This period has no lab groups yet. Arrange students into groups on the class page, then start the session.', compact: true })}</div>` : html`
     <div class="live-tools">
       <div class="chips" role="group" aria-label="Filter groups by status">
@@ -63,7 +64,7 @@ function liveView() {
     </div>
     ${list.length ? html`<div class="groups-grid">${list.map((p) => groupTile(p, sess, c, statuses.get(p.id), now))}</div>`
       : html`<div class="card">${emptyState({ ico: 'search', title: 'No groups with this status', text: 'Choose another filter to see the rest of the class.', compact: true, actions: html`<button class="btn btn-sm" data-action="live-filter" data-f="all">Show all groups</button>` })}</div>`}`}
-    ${sess.status === 'active' || sess.status === 'paused' ? demoPanel(sess, ps) : ''}
+    ${(sess.status === 'active' || sess.status === 'paused') && !StudentSite.connected() ? demoPanel(sess, ps) : ''}
     ${openHelp ? html`<p class="small"><a href="#help">${icon('lifebuoy', 'sm')} ${plural(openHelp, 'open help request')} for this session in the Help Queue</a></p>` : ''}
   </div>
   ${U.drawer ? groupDrawer(U.drawer) : ''}`;

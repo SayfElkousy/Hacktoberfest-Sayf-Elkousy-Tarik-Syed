@@ -76,7 +76,7 @@ function activeLabCard(sess) {
       </div>
     </div>
     <div class="card-foot"><button class="btn btn-primary" data-action="open-session" data-sid="${sess.id}" data-where="live">${icon('activity')}Open Live Progress</button>
-      <span class="small muted">Statuses update as students work. In this demo, live events come from the demo controls.</span></div>
+      <span class="small muted">${StudentSite.connected() ? 'Statuses update from the student site as students work.' : 'Statuses update as students work. In this demo, live events come from the demo controls.'}</span></div>
   </section>`;
 }
 

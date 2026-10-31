@@ -2,7 +2,7 @@
    Bridge to the Student Assistant site (the "student assistant" folder).
 
    Labby has no server of its own yet, so this runs in the teacher's browser.
-   While a session is active it publishes the lab under the class join code,
+   While a session is active it publishes the lab under its live session code,
    with the period's lab groups as teams, then reads each team's progress back
    into LabSessionAPI so Live Progress and the Help Queue update for real.
 
@@ -54,14 +54,9 @@ const StudentSite = {
     return res.json();
   },
 
-  /** The newest active session for each class, since students join by the class code. */
+  /** Every running session has its own live code, so each one is published separately. */
   sessions() {
-    const byClass = new Map();
-    S.sessions.filter((s) => s.status === 'active').forEach((s) => {
-      const held = byClass.get(s.classId);
-      if (!held || (s.startedAt || 0) > (held.startedAt || 0)) byClass.set(s.classId, s);
-    });
-    return [...byClass.values()];
+    return S.sessions.filter((s) => s.status === 'active' && ensureLiveCode(s));
   },
 
   labFor(sess) {
@@ -75,7 +70,7 @@ const StudentSite = {
       c.precautions.length ? `Safety: ${c.precautions.join('; ')}` : '',
       ...steps.map((text, i) => `${i + 1}. ${text}`),
     ].filter(Boolean).join('\n');
-    return { code: classById(sess.classId).joinCode, procedure, teams, steps };
+    return { code: sess.liveCode, procedure, teams, steps };
   },
 
   async publish(sess) {
@@ -237,7 +232,7 @@ const StudentSite = {
     return html`<section class="card card-pad stack" aria-labelledby="ss-live-h">
       <div class="row between"><h2 id="ss-live-h">Live from the student site</h2><span class="hint">${this.state === 'connected' ? 'Connected' : 'Connection interrupted'}</span></div>
       ${sess.status !== 'active' ? html`<p class="small muted">Start this session to open it to students.</p>`
-        : !teams.length ? html`<p class="small muted">Waiting for students to join with code ${classById(sess.classId).joinCode}.</p>`
+        : !teams.length ? html`<p class="small muted">Waiting for students to join with code ${sess.liveCode}.</p>`
         : html`<div class="table-wrap"><table class="table"><thead><tr><th>Group</th><th>Student</th><th>Where they are</th><th>Measurements</th><th>Answers</th><th>Device</th></tr></thead>
           <tbody>${teams.flatMap((team) => team.students.map((s) => html`<tr><td>${team.name}</td><td>${s.name}</td><td>${place(s)}</td><td>${s.measurements}</td><td>${s.answers}</td><td>${s.online ? 'Online' : 'Offline'}</td></tr>`))}</tbody></table></div>`}
     </section>`;
@@ -255,7 +250,7 @@ const StudentSite = {
     const live = this.sessions();
     return html`<section class="card card-pad stack" aria-labelledby="ss-h">
       <div class="row between"><h2 id="ss-h">Student site</h2><span class="hint">${label}</span></div>
-      <p class="small muted">Students join with the class code. Each lab group’s progress then appears in Live Progress and the Help Queue while a session is active.</p>
+      <p class="small muted">Students join with the live session code. Each lab group’s progress then appears in Live Progress and the Help Queue while a session is active.</p>
       <div class="form-grid">
         <div class="field"><label class="label" for="ss-url">Address</label><input class="input" id="ss-url" value="${url}"></div>
         <div class="field"><label class="label" for="ss-token">Dashboard token</label><input class="input" id="ss-token" type="password" autocomplete="off" value="${token}"><span class="hint">Printed when the student site’s server starts.</span></div>
@@ -274,7 +269,7 @@ const StudentSite = {
     'site-ask': async () => {
       const question = document.getElementById('ss-question').value.trim();
       try {
-        for (const sess of StudentSite.sessions()) await StudentSite.call(`/labs/${encodeURIComponent(classById(sess.classId).joinCode)}/prompts`, { question });
+        for (const sess of StudentSite.sessions()) await StudentSite.call(`/labs/${encodeURIComponent(sess.liveCode)}/prompts`, { question });
         toast('Question sent to students.', 'check');
       } catch (e) { toast('Couldn’t reach the student site.', 'alert'); }
     },

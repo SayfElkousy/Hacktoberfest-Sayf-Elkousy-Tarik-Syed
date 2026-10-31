@@ -80,8 +80,8 @@ Example reply:
 const STEP_PROMPT = `You prepare one step of a school lab for an assistant that guides a student and watches them through a webcam.
 
 Pick "mode", the first of these that fits:
-1. "measure": the step sets or measures an angle or a length. Fill measureKind and measureSubject. Copy any number in the step into measureTarget, converted to degrees or centimetres.
-2. "sensor": the step names a probe, meter, data logger or scale to read. Just recording what you see is NOT a sensor.
+1. "measure": the step sets or measures an angle or a length, and nothing else. Mass, temperature, time and volume are never "measure". Fill measureKind and measureSubject. Copy any number in the step into measureTarget, converted to degrees or centimetres.
+2. "sensor": the step reads a value from an instrument, such as a mass from a balance, a temperature from a thermometer, or a probe, meter, timer or data logger. Just recording what you see is NOT a sensor.
 3. "ask": the student must report something: an observation such as a colour or precipitate, a result, what happened when something moved, or an explanation. Add a question to "questions" with the answer in "expected". Use kind "observation" for what they see and "comprehension" for explaining why.
 4. "camera": the student places, connects, pours or puts on something a webcam can show. Describe in "lookFor" what the finished step looks like.
 

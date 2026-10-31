@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { buildPlan } from './brain.ts';
 import { fetchProcedure } from './dashboard-link.ts';
 import { prepareSpeech } from './speech.ts';
-import { findLabByCode, saveLab, studentsInLab } from './store.ts';
+import { findLabByCode, getLab, saveLab, studentsInLab } from './store.ts';
 import type { Lab, LabPlan, LabTeam, TeamProgress } from '../shared/types.ts';
 
 /** Everything every student will hear, as the site words it. */
@@ -25,12 +25,13 @@ function spokenLines(plan: LabPlan): string[] {
 function breakDown(lab: Lab): void {
   buildPlan(lab.procedure, lab.knownSteps)
     .then((plan) => {
-      saveLab({ ...lab, plan, status: 'ready' });
+      // Read it again: the dashboard can update the teams while the procedure is being read.
+      saveLab({ ...(getLab(lab.id) ?? lab), plan, status: 'ready' });
       void prepareSpeech(spokenLines(plan));
     })
     .catch((error: Error) => {
       console.error('Plan failed:', error);
-      saveLab({ ...lab, status: 'failed', error: error.message });
+      saveLab({ ...(getLab(lab.id) ?? lab), status: 'failed', error: error.message });
     });
 }
 

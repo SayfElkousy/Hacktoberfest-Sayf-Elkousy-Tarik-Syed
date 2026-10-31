@@ -2700,7 +2700,7 @@ function liveErrorText(e) {
     case 'not_granted': case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed':
       return 'Live AI isn’t allowed for this page, so Labby switched to the simulated assistant. Your plan wasn’t changed.';
     case 'rate_limited': return 'Too many AI requests right now. Wait a minute and try again, or switch to the simulated assistant.';
-    case 'session_expired': return 'Your Claude session expired. Sign in again to use live AI.';
+    case 'session_expired': return 'Your session expired. Sign in again to use live AI.';
     case 'invalid_json': case 'empty_completion': return 'The response couldn’t be read as a lab plan. Try again, or ask for a smaller change.';
     case 'refused': return 'The assistant declined this request. Try rephrasing it.';
     case 'prompt_too_large': return 'The plan is too long to send. Remove some steps or notes and try again.';
@@ -3657,15 +3657,15 @@ Reply with only one JSON object in this shape:
 {"viewClear": true, "observation": "what is literally visible that matters for this step, or empty", "inference": "what you think it means, or empty", "guidance": "one or two short sentences to the student", "suggestedAction": "none | show_clearer_view | confirm_step | pause_and_get_teacher", "stepMayBeComplete": false, "teacherHelpRecommended": false, "helpCategory": "Equipment | Procedure | Measurement | Other", "helpReason": "short reason, or empty"}`;
 }
 class ClaudeGuidanceAdapter extends RecordingAdapter {
-  constructor() { super(); this.kind = 'claude'; this.label = 'Claude live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
+  constructor() { super(); this.kind = 'claude'; this.label = 'Live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
   get caps() { return { frames: this.images, audio: false, lowBandwidth: true }; }
   async connect(ctx) {
     this.ctx = ctx; this.setState('connecting');
     const s = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('sample').catch(() => null) : null;
-    if (!s) { this.setState('unavailable', 'Claude isn’t available in this view (for example, when Labby is opened outside Claude).'); throw { code: 'unavailable' }; }
+    if (!s) { this.setState('unavailable', 'Live AI isn’t available in this view.'); throw { code: 'unavailable' }; }
     this.sample = s;
     try { const lim = await s.limits(); this.images = !!(lim && lim.images); } catch (e) { this.images = false; }
-    this.setState('connected', this.images ? '' : 'Camera images can’t be sent from this view, so Claude answers typed questions only.');
+    this.setState('connected', this.images ? '' : 'Camera images can’t be sent from this view, so the AI answers typed questions only.');
   }
   cancel() { if (this.ctl) { this.ctl.abort(); this.ctl = null; } }
   async request(meta, { blob = null, question = '' }) {
@@ -3702,7 +3702,7 @@ class SimulatedAdapter extends RecordingAdapter {
   send(raw, meta = {}) { const m = { ...this.ctx.meta(), seq: this.ctx.nextSeq(), requestId: `sim_${uid(6)}`, ...meta }; const ev = validateGuidance(raw, m, 'simulated'); if (ev) this.emit({ type: 'guidance', event: ev }); }
   stepGuidance() { const s = this.ctx.step; if (!s || this.dropped) return; const first = String(s.instructions || '').split(/(?<=\.)\s/)[0]; this.later(() => this.send({ guidance: `[Simulated] Step ${s.number}, ${s.title}: ${first}` }), 400); }
   analyzeFrame() { return Promise.resolve(); }
-  ask(question) { this.later(() => this.send({ guidance: '[Simulated] This demo connection doesn’t read questions or images. With the recording service or Claude connected, the answer would come from your current step.' }, { question, withImage: false }), 500); return Promise.resolve(); }
+  ask(question) { this.later(() => this.send({ guidance: '[Simulated] This demo connection doesn’t read questions or images. With the recording service or live AI connected, the answer would come from your current step.' }, { question, withImage: false }), 500); return Promise.resolve(); }
   setStep(ctx) { this.ctx = ctx; this.timers.forEach(clearTimeout); this.timers = []; this.stepGuidance(); }
   pause() { this.setState('paused'); } resume() { this.setState('connected'); }
   disconnect() { this.timers.forEach(clearTimeout); this.setState('disconnected'); this.listeners.clear(); }
@@ -3760,7 +3760,7 @@ class RemoteRecordingAdapter extends RecordingAdapter {
   disconnect() { this.closing = true; this.inflight.clear(); try { this.send({ type: 'bye' }); if (this.ws) this.ws.close(); } catch (e) { /* closed */ } this.setState('disconnected'); this.listeners.clear(); }
 }
 const ADAPTERS = {
-  claude: { label: 'Claude live AI', make: () => new ClaudeGuidanceAdapter(), available: () => AI.available !== false },
+  claude: { label: 'Live AI', make: () => new ClaudeGuidanceAdapter(), available: () => AI.available !== false },
   remote: { label: 'Recording service', make: () => new RemoteRecordingAdapter(), available: () => RemoteRecordingAdapter.configured() },
   simulated: { label: 'Simulated (demo)', make: () => new SimulatedAdapter(), available: () => true },
 };
@@ -4699,7 +4699,7 @@ function designerInputs(d) {
     ${fold('logistics', 'Class logistics', 'users', logisticsBody, d)}
   </div>
   <div class="composer">
-    <div class="row between wrap"><span class="small muted">Assistant: ${aiMode() === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI (Claude)</span>` : simTag('Simulated')}</span>
+    <div class="row between wrap"><span class="small muted">Assistant: ${aiMode() === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated')}</span>
       <button class="btn btn-ai" data-action="designer-generate"${attr(AI.busy, 'disabled')}>${AI.busy ? html`<span class="spinner"></span>Working…` : html`${icon('sparkles')}${d.plan ? 'Generate new plan' : 'Generate plan'}`}</button></div>
     ${d.plan ? html`<span class="hint">Generating again replaces the current draft. To change it instead, use Revise with AI.</span>` : ''}
   </div>`;
@@ -4709,13 +4709,13 @@ function aiModeSwitch() {
   const avail = AI.available; const mode = aiMode();
   return html`<div class="stack tight">
     <div class="chips" role="radiogroup" aria-label="Assistant mode">
-      <button class="chip" role="radio" aria-checked="${mode === 'live'}" aria-pressed="${mode === 'live'}" data-action="ai-mode" data-mode="live"${attr(!avail || AI.denied, 'disabled')}>${icon('sparkles', 'sm')}Live AI (Claude)</button>
+      <button class="chip" role="radio" aria-checked="${mode === 'live'}" aria-pressed="${mode === 'live'}" data-action="ai-mode" data-mode="live"${attr(!avail || AI.denied, 'disabled')}>${icon('sparkles', 'sm')}Live AI</button>
       <button class="chip" role="radio" aria-checked="${mode === 'simulated'}" aria-pressed="${mode === 'simulated'}" data-action="ai-mode" data-mode="simulated">${icon('zap', 'sm')}Simulated</button>
     </div>
     <span class="hint">${avail === null ? 'Checking whether live AI is available here…'
       : AI.denied ? 'Live AI was declined for this page, so the simulated assistant is answering.'
       : !avail ? 'Live AI isn’t available in this view. The simulated assistant knows four sample experiments and three kinds of follow-up.'
-      : mode === 'live' ? 'Claude answers using your Claude account. You’ll be asked to allow it the first time.' : 'The simulated assistant knows four sample experiments and three kinds of follow-up.'}</span>
+      : mode === 'live' ? 'The AI answers using your account. You’ll be asked to allow it the first time.' : 'The simulated assistant knows four sample experiments and three kinds of follow-up.'}</span>
   </div>`;
 }
 
@@ -4737,11 +4737,11 @@ function designerAssistant(d) {
 
 function chatMessage(m) {
   if (m.role === 'user') return html`<div class="msg user" data-key="m-${m.id}">${m.text}</div>`;
-  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Claude · live AI</span>` : simTag('Simulated assistant')}</div>
-    <div class="row"><span class="spinner"></span><span>${m.source === 'live' ? 'Claude is working on it. This usually takes 20–60 seconds.' : 'Drafting a sample plan…'}</span></div>
+  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated assistant')}</div>
+    <div class="row"><span class="spinner"></span><span>${m.source === 'live' ? 'The AI is working on it. This usually takes 20–60 seconds.' : 'Drafting a sample plan…'}</span></div>
     ${m.source === 'live' ? html`<button class="btn btn-xs" style="align-self:flex-start" data-action="ai-stop">${icon('stopCircle', 'sm')}Stop</button>` : ''}</div>`;
   return html`<div class="msg assistant ${m.error ? 'error' : ''}" data-key="m-${m.id}">
-    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Claude · live AI</span>` : m.source === 'simulated' ? simTag('Simulated assistant') : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
+    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : m.source === 'simulated' ? simTag('Simulated assistant') : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
     <span style="white-space:pre-wrap">${m.text}</span>
     ${(m.changes && m.changes.length) || (m.check && m.check.length) ? html`<div class="changes"><strong class="small">What changed</strong><ul>
       ${(m.changes || []).map((c) => html`<li>${c}</li>`)}${(m.check || []).map((c) => html`<li><span class="muted">Labby’s check:</span> ${c}</li>`)}</ul></div>` : ''}
@@ -4761,7 +4761,7 @@ function planPreview(d) {
   return html`<section class="card" aria-labelledby="plan-title" aria-busy="${AI.busy}">
     <div class="card-head" style="align-items:flex-start">
       <div class="stack tight" style="min-width:0;flex:1 1 300px">
-        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by Claude</span>` : meta.source === 'simulated' ? simTag('Simulated plan') : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
+        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by AI</span>` : meta.source === 'simulated' ? simTag('Simulated plan') : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
         <h2 id="plan-title" style="font-size:1.35rem">${plan.title}</h2>
       </div>
     </div>
@@ -4960,7 +4960,7 @@ function proposeRevision(res, source) {
 function reviewCard(d) {
   const p = d.pending;
   return html`<section class="review-card" aria-labelledby="rc-h" data-key="rc-${p.id}">
-    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Claude</span>` : simTag('Simulated')}</div>
+    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Live AI</span>` : simTag('Simulated')}</div>
     <div class="rc-body">
       <div class="stack tight"><span class="eyebrow">Suggested change</span>${p.changes.length ? html`<ul class="ul-plain small">${p.changes.map((c) => html`<li>${c}</li>`)}</ul>` : html`<p class="small">Updates the plan as described.</p>`}</div>
       <div class="stack tight"><span class="eyebrow">Reason</span><p class="small">${p.reason}</p></div>
@@ -5621,7 +5621,7 @@ function settingsView() {
     <section class="card card-pad stack" aria-labelledby="dm-h" style="border-style:dashed"><div class="row"><span class="demo-tag">${icon('zap', 'sm')}Demo</span><h2 id="dm-h">About this prototype</h2></div>
       <ul class="ul-plain small">
         <li><strong>Sign-in</strong> is simulated. Accounts and data are saved only in this browser.</li>
-        <li><strong>Lab Designer</strong> uses live Claude responses when this page is allowed to; otherwise a labeled simulated assistant answers.</li>
+        <li><strong>Lab Designer</strong> uses live AI responses when this page is allowed to; otherwise a labeled simulated assistant answers.</li>
         <li><strong>File import</strong> really reads PDF (text-based), DOCX and TXT files in your browser. Structuring the text is rule-based.</li>
         <li><strong>Live student events</strong> come from the demo controls on Live Progress, not real student devices.</li>
       </ul>
@@ -6347,7 +6347,7 @@ function liveLobby(m) {
   </div>`;
 }
 function privacyText(kind, prefs) {
-  if (kind === 'claude') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to Claude through the Claude account of the person viewing this page. Video is never streamed.</li>
+  if (kind === 'claude') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> while the camera is on, one still photo every ${prefs.intervalSec || 'few'} seconds (and one when you ask a question), up to ${prefs.lowBandwidth ? LABBY_CONFIG.lowBandwidthFrameWidth : LABBY_CONFIG.maxFrameWidth} pixels wide, plus this step’s instructions and your recorded values. It goes to the AI assistant through the account of the person viewing this page. Video is never streamed.</li>
     <li><strong>What’s stored:</strong> Labby doesn’t save photos or video. The guidance text is saved with your group’s progress.</li>
     <li><strong>Who can see it:</strong> your group sees the guidance. Your teacher sees step progress, measurements, checkpoint answers and AI flags that ask for teacher help, but not photos.</li></ul>`;
   if (kind === 'remote') return html`<ul class="ul-plain small"><li><strong>What’s sent:</strong> sampled camera frames and this step’s instructions go to your school’s recording service (${(LABBY_CONFIG.recordingService.wsUrl || '').replace(/^wss?:\/\//, '').split('/')[0] || 'not configured'}).</li><li><strong>What’s stored:</strong> set by that service’s retention policy. Labby doesn’t save video.</li><li><strong>Who can see it:</strong> your teacher sees progress and AI flags, not video.</li></ul>`;
@@ -6383,7 +6383,7 @@ function liveSetup(m) {
         </div>
         ${Media.devices.length > 1 && !L.sim ? html`<div class="field"><label for="cam-dev">Camera</label><select class="select sm" id="cam-dev" data-change="live-device">${options(Media.devices.map((d) => [d.id, d.label]), Media.deviceId)}</select></div>` : ''}
         <label class="check" for="live-mic"><input type="checkbox" id="live-mic" data-change="live-mic-pref"${attr(prefs.mic, 'checked')}${attr(L.sim || kind === 'claude', 'disabled')}><span>Use the microphone <span class="opt">(optional)</span>
-          <span class="hint" style="display:block">${kind === 'claude' ? 'Claude guidance uses still photos only, so audio isn’t sent.' : kind === 'simulated' ? 'In the demo, audio stays on this device.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
+          <span class="hint" style="display:block">${kind === 'claude' ? 'Live AI guidance uses still photos only, so audio isn’t sent.' : kind === 'simulated' ? 'In the demo, audio stays on this device.' : 'Sent to the recording service if it supports audio.'}</span></span></label>
       </section>
       <section class="card card-pad stack" aria-labelledby="ai-h">
         <h3 id="ai-h">AI connection</h3>
@@ -6529,7 +6529,7 @@ function guidancePanel(m) {
   const L = U.live; const p = m.t.p; const prefs = livePrefs();
   const log = (p.guidance || []).slice().reverse(); const latest = log[0];
   const kindLabel = { guidance: 'AI guidance', answer: 'AI answer', unclear_view: 'AI: camera view unclear', suggested_completion: 'AI suggestion', help_recommended: 'AI recommends asking your teacher', observation: 'AI observation' };
-  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag ${g.source === 'simulated' ? 'sim' : 'live'}">${icon(g.source === 'simulated' ? 'zap' : 'sparkles', 'sm')}${g.source === 'simulated' ? 'Simulated' : g.source === 'claude' ? 'Claude' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
+  const card = (g, big) => html`<div class="guide ${big ? 'big' : ''} g-${g.type}"><div class="msg-meta"><span class="tag ${g.source === 'simulated' ? 'sim' : 'live'}">${icon(g.source === 'simulated' ? 'zap' : 'sparkles', 'sm')}${g.source === 'simulated' ? 'Simulated' : g.source === 'claude' ? 'Live AI' : 'Recording service'}</span><span>${kindLabel[g.type] || 'AI'}</span><span>${fmtClock(g.at)}</span>${g.withImage ? html`<span>${icon('eye', 'sm')}from a photo</span>` : ''}</div>
     ${g.question ? html`<p class="small muted">You asked: “${g.question}”</p>` : ''}
     ${g.observation ? html`<p class="small"><strong>Sees:</strong> ${g.observation}</p>` : ''}${g.inference ? html`<p class="small"><strong>Thinks:</strong> ${g.inference}</p>` : ''}
     <p class="${big ? '' : 'small'}">${g.guidance}</p></div>`;

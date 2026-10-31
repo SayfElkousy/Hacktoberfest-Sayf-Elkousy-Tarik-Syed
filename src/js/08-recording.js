@@ -185,15 +185,15 @@ Reply with only one JSON object in this shape:
 {"viewClear": true, "observation": "what is literally visible that matters for this step, or empty", "inference": "what you think it means, or empty", "guidance": "one or two short sentences to the student", "suggestedAction": "none | show_clearer_view | confirm_step | pause_and_get_teacher", "stepMayBeComplete": false, "teacherHelpRecommended": false, "helpCategory": "Equipment | Procedure | Measurement | Other", "helpReason": "short reason, or empty"}`;
 }
 class ClaudeGuidanceAdapter extends RecordingAdapter {
-  constructor() { super(); this.kind = 'claude'; this.label = 'Claude live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
+  constructor() { super(); this.kind = 'claude'; this.label = 'Live AI'; this.sample = null; this.images = false; this.ctl = null; this.paused = false; }
   get caps() { return { frames: this.images, audio: false, lowBandwidth: true }; }
   async connect(ctx) {
     this.ctx = ctx; this.setState('connecting');
     const s = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('sample').catch(() => null) : null;
-    if (!s) { this.setState('unavailable', 'Claude isn’t available in this view (for example, when Labby is opened outside Claude).'); throw { code: 'unavailable' }; }
+    if (!s) { this.setState('unavailable', 'Live AI isn’t available in this view.'); throw { code: 'unavailable' }; }
     this.sample = s;
     try { const lim = await s.limits(); this.images = !!(lim && lim.images); } catch (e) { this.images = false; }
-    this.setState('connected', this.images ? '' : 'Camera images can’t be sent from this view, so Claude answers typed questions only.');
+    this.setState('connected', this.images ? '' : 'Camera images can’t be sent from this view, so the AI answers typed questions only.');
   }
   cancel() { if (this.ctl) { this.ctl.abort(); this.ctl = null; } }
   async request(meta, { blob = null, question = '' }) {
@@ -230,7 +230,7 @@ class SimulatedAdapter extends RecordingAdapter {
   send(raw, meta = {}) { const m = { ...this.ctx.meta(), seq: this.ctx.nextSeq(), requestId: `sim_${uid(6)}`, ...meta }; const ev = validateGuidance(raw, m, 'simulated'); if (ev) this.emit({ type: 'guidance', event: ev }); }
   stepGuidance() { const s = this.ctx.step; if (!s || this.dropped) return; const first = String(s.instructions || '').split(/(?<=\.)\s/)[0]; this.later(() => this.send({ guidance: `[Simulated] Step ${s.number}, ${s.title}: ${first}` }), 400); }
   analyzeFrame() { return Promise.resolve(); }
-  ask(question) { this.later(() => this.send({ guidance: '[Simulated] This demo connection doesn’t read questions or images. With the recording service or Claude connected, the answer would come from your current step.' }, { question, withImage: false }), 500); return Promise.resolve(); }
+  ask(question) { this.later(() => this.send({ guidance: '[Simulated] This demo connection doesn’t read questions or images. With the recording service or live AI connected, the answer would come from your current step.' }, { question, withImage: false }), 500); return Promise.resolve(); }
   setStep(ctx) { this.ctx = ctx; this.timers.forEach(clearTimeout); this.timers = []; this.stepGuidance(); }
   pause() { this.setState('paused'); } resume() { this.setState('connected'); }
   disconnect() { this.timers.forEach(clearTimeout); this.setState('disconnected'); this.listeners.clear(); }
@@ -288,7 +288,7 @@ class RemoteRecordingAdapter extends RecordingAdapter {
   disconnect() { this.closing = true; this.inflight.clear(); try { this.send({ type: 'bye' }); if (this.ws) this.ws.close(); } catch (e) { /* closed */ } this.setState('disconnected'); this.listeners.clear(); }
 }
 const ADAPTERS = {
-  claude: { label: 'Claude live AI', make: () => new ClaudeGuidanceAdapter(), available: () => AI.available !== false },
+  claude: { label: 'Live AI', make: () => new ClaudeGuidanceAdapter(), available: () => AI.available !== false },
   remote: { label: 'Recording service', make: () => new RemoteRecordingAdapter(), available: () => RemoteRecordingAdapter.configured() },
   simulated: { label: 'Simulated (demo)', make: () => new SimulatedAdapter(), available: () => true },
 };

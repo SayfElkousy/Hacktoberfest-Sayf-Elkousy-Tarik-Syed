@@ -24,7 +24,7 @@ function proposeRevision(res, source) {
 function reviewCard(d) {
   const p = d.pending;
   return html`<section class="review-card" aria-labelledby="rc-h" data-key="rc-${p.id}">
-    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Claude</span>` : simTag('Simulated')}</div>
+    <div class="rc-head"><strong id="rc-h" class="row">${icon('sparkles', 'sm')}Proposed change</strong>${p.source === 'live' ? html`<span class="tag live">Live AI</span>` : simTag('Simulated')}</div>
     <div class="rc-body">
       <div class="stack tight"><span class="eyebrow">Suggested change</span>${p.changes.length ? html`<ul class="ul-plain small">${p.changes.map((c) => html`<li>${c}</li>`)}</ul>` : html`<p class="small">Updates the plan as described.</p>`}</div>
       <div class="stack tight"><span class="eyebrow">Reason</span><p class="small">${p.reason}</p></div>

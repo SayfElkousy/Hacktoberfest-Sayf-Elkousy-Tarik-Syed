@@ -85,7 +85,7 @@ function designerInputs(d) {
     ${fold('logistics', 'Class logistics', 'users', logisticsBody, d)}
   </div>
   <div class="composer">
-    <div class="row between wrap"><span class="small muted">Assistant: ${aiMode() === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI (Claude)</span>` : simTag('Simulated')}</span>
+    <div class="row between wrap"><span class="small muted">Assistant: ${aiMode() === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated')}</span>
       <button class="btn btn-ai" data-action="designer-generate"${attr(AI.busy, 'disabled')}>${AI.busy ? html`<span class="spinner"></span>Working…` : html`${icon('sparkles')}${d.plan ? 'Generate new plan' : 'Generate plan'}`}</button></div>
     ${d.plan ? html`<span class="hint">Generating again replaces the current draft. To change it instead, use Revise with AI.</span>` : ''}
   </div>`;
@@ -95,13 +95,13 @@ function aiModeSwitch() {
   const avail = AI.available; const mode = aiMode();
   return html`<div class="stack tight">
     <div class="chips" role="radiogroup" aria-label="Assistant mode">
-      <button class="chip" role="radio" aria-checked="${mode === 'live'}" aria-pressed="${mode === 'live'}" data-action="ai-mode" data-mode="live"${attr(!avail || AI.denied, 'disabled')}>${icon('sparkles', 'sm')}Live AI (Claude)</button>
+      <button class="chip" role="radio" aria-checked="${mode === 'live'}" aria-pressed="${mode === 'live'}" data-action="ai-mode" data-mode="live"${attr(!avail || AI.denied, 'disabled')}>${icon('sparkles', 'sm')}Live AI</button>
       <button class="chip" role="radio" aria-checked="${mode === 'simulated'}" aria-pressed="${mode === 'simulated'}" data-action="ai-mode" data-mode="simulated">${icon('zap', 'sm')}Simulated</button>
     </div>
     <span class="hint">${avail === null ? 'Checking whether live AI is available here…'
       : AI.denied ? 'Live AI was declined for this page, so the simulated assistant is answering.'
       : !avail ? 'Live AI isn’t available in this view. The simulated assistant knows four sample experiments and three kinds of follow-up.'
-      : mode === 'live' ? 'Claude answers using your Claude account. You’ll be asked to allow it the first time.' : 'The simulated assistant knows four sample experiments and three kinds of follow-up.'}</span>
+      : mode === 'live' ? 'The AI answers using your account. You’ll be asked to allow it the first time.' : 'The simulated assistant knows four sample experiments and three kinds of follow-up.'}</span>
   </div>`;
 }
 
@@ -123,11 +123,11 @@ function designerAssistant(d) {
 
 function chatMessage(m) {
   if (m.role === 'user') return html`<div class="msg user" data-key="m-${m.id}">${m.text}</div>`;
-  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Claude · live AI</span>` : simTag('Simulated assistant')}</div>
-    <div class="row"><span class="spinner"></span><span>${m.source === 'live' ? 'Claude is working on it. This usually takes 20–60 seconds.' : 'Drafting a sample plan…'}</span></div>
+  if (m.pending) return html`<div class="msg assistant" data-key="m-${m.id}"><div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : simTag('Simulated assistant')}</div>
+    <div class="row"><span class="spinner"></span><span>${m.source === 'live' ? 'The AI is working on it. This usually takes 20–60 seconds.' : 'Drafting a sample plan…'}</span></div>
     ${m.source === 'live' ? html`<button class="btn btn-xs" style="align-self:flex-start" data-action="ai-stop">${icon('stopCircle', 'sm')}Stop</button>` : ''}</div>`;
   return html`<div class="msg assistant ${m.error ? 'error' : ''}" data-key="m-${m.id}">
-    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Claude · live AI</span>` : m.source === 'simulated' ? simTag('Simulated assistant') : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
+    <div class="msg-meta">${m.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Live AI</span>` : m.source === 'simulated' ? simTag('Simulated assistant') : html`<span class="tag">Labby</span>`}<span>${fmtClock(m.at)}</span></div>
     <span style="white-space:pre-wrap">${m.text}</span>
     ${(m.changes && m.changes.length) || (m.check && m.check.length) ? html`<div class="changes"><strong class="small">What changed</strong><ul>
       ${(m.changes || []).map((c) => html`<li>${c}</li>`)}${(m.check || []).map((c) => html`<li><span class="muted">Labby’s check:</span> ${c}</li>`)}</ul></div>` : ''}
@@ -147,7 +147,7 @@ function planPreview(d) {
   return html`<section class="card" aria-labelledby="plan-title" aria-busy="${AI.busy}">
     <div class="card-head" style="align-items:flex-start">
       <div class="stack tight" style="min-width:0;flex:1 1 300px">
-        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by Claude</span>` : meta.source === 'simulated' ? simTag('Simulated plan') : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
+        <div class="row wrap">${labPill('draft')}${meta.source === 'live' ? html`<span class="tag live">${icon('sparkles', 'sm')}Drafted by AI</span>` : meta.source === 'simulated' ? simTag('Simulated plan') : ''}${saved ? html`<span class="tag">${icon('check', 'sm')}Saved to library</span>` : html`<span class="tag">Not saved</span>`}${AI.busy ? html`<span class="tag"><span class="spinner" style="width:12px;height:12px"></span>Revising…</span>` : ''}</div>
         <h2 id="plan-title" style="font-size:1.35rem">${plan.title}</h2>
       </div>
     </div>

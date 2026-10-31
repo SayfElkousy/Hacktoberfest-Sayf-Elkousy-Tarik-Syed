@@ -44,7 +44,7 @@ function joinLinksBlock(cls) {
 function tileExtras(p) {
   const out = [];
   const flag = (p.aiFlags || []).slice(-1)[0];
-  if (flag && Date.now() - flag.at < 15 * MIN) out.push(html`<span class="pill tone-warn" title="${flag.text}">${icon('sparkles')}AI flag (model-generated): ${flag.kind === 'help' ? 'may need help' : 'camera view unclear'}</span>`);
+  if (flag && Date.now() - flag.at < 15 * MIN) out.push(html`<span class="pill tone-warn" title="${flag.text}">${icon('sparkles')}AI flag (model-generated): ${flag.kind === 'help' ? 'may need help' : flag.kind === 'safety' ? 'safety alert' : 'camera view unclear'}</span>`);
   if (p.camera && Date.now() - p.camera.beat < 90000) out.push(html`<span class="tag">${icon('eye', 'sm')}Camera: ${p.camera.holderName}</span>`);
   if ((p.joined || []).length) out.push(html`<span class="tag">${icon('users', 'sm')}${plural(p.joined.length, 'student')} in the live session</span>`);
   return out.length ? html`<div class="gt-flags">${out}</div>` : '';
@@ -59,7 +59,7 @@ function drawerExtras(p, sess, c) {
           <button class="btn btn-sm ${st.waitingOn === 'approval' ? 'btn-primary' : ''}" data-action="cp-review" data-pid="${p.id}" data-cp="${cp.id}">${st.waitingOn === 'approval' ? 'Review and approve' : 'View responses'}</button></div>`; })
         : html`<p class="small muted">None released yet.</p>`}</section>
     <section class="drawer-section"><h3>AI flags <span class="tag">model-generated</span></h3>
-      ${flags.length ? html`<ul class="timeline">${flags.slice(0, 5).map((f) => html`<li><span class="xs muted mono">${fmtClock(f.at)}</span><span class="small">${f.kind === 'help' ? 'Suggested teacher help' : 'Camera view unclear'}: ${f.text}</span></li>`)}</ul>` : html`<p class="small muted">None. Only flags that need you are shown here, not every AI message.</p>`}
+      ${flags.length ? html`<ul class="timeline">${flags.slice(0, 5).map((f) => html`<li><span class="xs muted mono">${fmtClock(f.at)}</span><span class="small">${f.kind === 'help' ? 'Suggested teacher help' : f.kind === 'safety' ? 'Safety alert' : 'Camera view unclear'}: ${f.text}</span></li>`)}</ul>` : html`<p class="small muted">None. Only flags that need you are shown here, not every AI message.</p>`}
       ${p.camera ? html`<p class="small">${icon('eye', 'sm')} Group camera: ${p.camera.holderName}${p.camera.deviceLabel ? ` (${p.camera.deviceLabel})` : ''}. Video isn’t shared with teachers.</p>` : ''}</section>`;
 }
 function cpReviewModal() {

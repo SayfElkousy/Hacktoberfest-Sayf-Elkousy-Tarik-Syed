@@ -117,6 +117,7 @@ function sessFromEl(el) { return sessionById(el.dataset.sid); }
 function progFromEl(el) { return S.progress.find((p) => p.id === el.dataset.pid); }
 
 const ACTIONS = {
+  ...StudentSite.actions,
   /* auth + demo */
   'demo-login': (el) => { const u = byId(S.users, el.dataset.uid); S.currentUserId = u.id; commit(); go(homeFor(u.role)); },
   'signout': () => { S.currentUserId = null; U.menu = false; commit(); go('signin'); toast('Signed out.'); },

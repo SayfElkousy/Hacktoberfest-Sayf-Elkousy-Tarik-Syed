@@ -73,7 +73,7 @@ const Engine = {
     }
     const correctOk = !cp.requireCorrect || (recs.length > 0 && recs.every((r) => allCorrect(cp, r.responses)));
     const approvalOk = !cp.approvalRequired || g.approval === 'approved';
-    const waitingOn = !responded ? 'response' : !correctOk ? 'correct' : !approvalOk ? (g.approval === 'returned' ? 'revision' : 'approval') : null;
+    const waitingOn = g.approval === 'returned' ? 'revision' : !responded ? 'response' : !correctOk ? 'correct' : !approvalOk ? (g.approval === 'returned' ? 'revision' : 'approval') : null;
     return { needResponse, responded, correctOk, approvalOk, approval: g.approval || 'none', satisfied: responded && correctOk && approvalOk, waitingOn, submittedCount: recs.length };
   },
   release(t, cp, at = Date.now()) {

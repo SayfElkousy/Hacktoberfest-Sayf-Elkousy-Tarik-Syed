@@ -18,6 +18,7 @@ function authView(route) {
     <div class="auth-brand"><span class="brand-mark">${BRAND_MARK}</span><span class="brand-name">Labby</span></div>
     <div class="stack tight"><h1 id="page-title" tabindex="-1">${isUp ? 'Create your Labby account' : 'Sign in to Labby'}</h1>
       <p class="muted">Real-time guidance for classroom labs, from the lesson plan to the last cleanup step.</p></div>
+    ${S.pendingInvite ? inviteBanner() : ''}
     <div class="card">
       <div class="tabs" role="tablist" aria-label="Account">
         <a class="tab" role="tab" href="#signin" aria-selected="${!isUp}">Sign in</a>
@@ -75,7 +76,7 @@ function submitSignin() {
   if (!email || !f.password) { f.error = 'Enter your email and password.'; commit(); return; }
   if (!user) { f.error = 'No Labby account uses this email in this browser. Create an account, or use one of the demo accounts below.'; commit(); return; }
   f.error = ''; f.password = '';
-  S.currentUserId = user.id; commit(); go(homeFor(user.role));
+  S.currentUserId = user.id; commit(); go(homeFor());
 }
 function submitSignup() {
   const f = U.auth.signup; const e = {};
@@ -87,8 +88,15 @@ function submitSignup() {
   f.errors = e;
   if (Object.keys(e).length) { commit(); const first = { role: 'input[name=role]', name: '#su-name', email: '#su-email', password: '#su-pass' }[Object.keys(e)[0]]; U.focusAfter = first; return; }
   const user = { id: uid(), name: f.name.trim(), email: f.email.trim(), role: f.role, school: f.school.trim(), createdAt: Date.now() };
+  if (user.role === 'student') { user.onboarded = false; user.profile = { displayName: user.name.split(' ')[0], school: user.school, level: '', gradYear: '', interests: [], bio: '', avatar: null }; }
   S.users.push(user); S.currentUserId = user.id;
   U.auth.signup = { name: '', email: '', password: '', role: '', school: '', errors: {} };
-  commit(); go(homeFor(user.role));
+  commit(); go(homeFor());
   toast(`Account created. Welcome to Labby, ${user.name.split(' ')[0]}.`);
+}
+
+function inviteBanner() {
+  const found = findClassByCode(S.pendingInvite.code);
+  return html`<div class="notice ok" role="status">${icon('key')}<div><strong>You’ve been invited to join ${found.cls && found.status === 'ok' ? found.cls.name : 'a class'}.</strong> Sign in or create a student account, and Labby will bring you right back to finish joining.
+    <button class="link-btn small" data-action="invite-cancel" style="margin-left:6px">Dismiss invitation</button></div></div>`;
 }

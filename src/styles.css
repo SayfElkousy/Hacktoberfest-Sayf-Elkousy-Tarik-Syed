@@ -1,37 +1,38 @@
 /* Layout concept: persistent left rail + working canvas; dense, scannable cards for in-class use, roomier forms for prep. */
 :root {
-  --bg: #f2f6f6;
+  --bg: #f7faf8;
   --surface: #ffffff;
-  --surface-2: #f7fafa;
-  --surface-3: #eaf1f1;
-  --ink: #0f2429;
-  --ink-2: #33494e;
-  --muted: #5a6f74;
-  --line: #d8e3e4;
-  --line-strong: #bfcfd1;
-  --accent: #0a7570;
-  --accent-ink: #075a56;
-  --accent-soft: #dcf0ee;
+  --surface-2: #f7faf8;
+  --surface-3: #eef5f0;
+  --ink: #17251d;
+  --ink-2: #2e4036;
+  --heading: #143d2b;
+  --muted: #52645a;
+  --line: #dce7df;
+  --line-strong: #c3d4c9;
+  --accent: #15803d;
+  --accent-ink: #166534;
+  --accent-soft: #ecfdf3;
   --accent-contrast: #ffffff;
   --blue: #1d5ba8;
   --blue-soft: #e2ecf9;
-  --ok: #1b733b;
-  --ok-soft: #dff2e5;
-  --warn: #8f5300;
-  --warn-soft: #fcefd6;
-  --bad: #b02417;
-  --bad-soft: #fbe4e1;
+  --ok: #15803d;
+  --ok-soft: #ecfdf3;
+  --warn: #92400e;
+  --warn-soft: #fef3c7;
+  --bad: #b42318;
+  --bad-soft: #fef0ee;
   --wait: #5f3dc4;
   --wait-soft: #ece7fb;
   --idle: #536266;
   --idle-soft: #e9eeef;
   --tape: #f6e7bd;
   --tape-ink: #5c4300;
-  --focus: #1d5ba8;
-  --overlay: rgba(10, 26, 30, 0.42);
-  --shadow: 0 1px 2px rgba(15, 36, 41, 0.07), 0 1px 1px rgba(15, 36, 41, 0.04);
-  --shadow-lg: 0 18px 40px rgba(15, 36, 41, 0.18), 0 2px 6px rgba(15, 36, 41, 0.08);
-  --font-display: "Bricolage Grotesque", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --focus: #15803d;
+  --overlay: rgba(20, 61, 43, 0.4);
+  --shadow: 0 1px 2px rgba(20, 61, 43, 0.06);
+  --shadow-lg: 0 18px 40px rgba(20, 61, 43, 0.16), 0 2px 6px rgba(20, 61, 43, 0.06);
+  --font-display: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --r-sm: 8px;
@@ -43,10 +44,10 @@
   :root:not([data-theme="light"]) {
     --bg: #0d1618; --surface: #142024; --surface-2: #18272b; --surface-3: #1e3034;
     --ink: #e4eeef; --ink-2: #c2d2d4; --muted: #94a9ac; --line: #26393d; --line-strong: #33494e;
-    --accent: #3fc1b6; --accent-ink: #84ded5; --accent-soft: #123a39; --accent-contrast: #04211f;
+    --accent: #4ade80; --accent-ink: #86efac; --accent-soft: #14351f; --accent-contrast: #052e16; --heading: #d7f5e2;
     --blue: #86b4f2; --blue-soft: #172f4d; --ok: #63cc88; --ok-soft: #12321f; --warn: #f0b75c; --warn-soft: #382811;
     --bad: #f38b7f; --bad-soft: #3c1a16; --wait: #bba6f6; --wait-soft: #282043; --idle: #a6b4b7; --idle-soft: #213034;
-    --tape: #3a3015; --tape-ink: #f1d98e; --focus: #86b4f2; --overlay: rgba(0, 0, 0, 0.6);
+    --tape: #3a3015; --tape-ink: #f1d98e; --focus: #4ade80; --overlay: rgba(0, 0, 0, 0.6);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.35); --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
@@ -54,10 +55,10 @@
 :root[data-theme="dark"] {
   --bg: #0d1618; --surface: #142024; --surface-2: #18272b; --surface-3: #1e3034;
   --ink: #e4eeef; --ink-2: #c2d2d4; --muted: #94a9ac; --line: #26393d; --line-strong: #33494e;
-  --accent: #3fc1b6; --accent-ink: #84ded5; --accent-soft: #123a39; --accent-contrast: #04211f;
+  --accent: #4ade80; --accent-ink: #86efac; --accent-soft: #14351f; --accent-contrast: #052e16; --heading: #d7f5e2;
   --blue: #86b4f2; --blue-soft: #172f4d; --ok: #63cc88; --ok-soft: #12321f; --warn: #f0b75c; --warn-soft: #382811;
   --bad: #f38b7f; --bad-soft: #3c1a16; --wait: #bba6f6; --wait-soft: #282043; --idle: #a6b4b7; --idle-soft: #213034;
-  --tape: #3a3015; --tape-ink: #f1d98e; --focus: #86b4f2; --overlay: rgba(0, 0, 0, 0.6);
+  --tape: #3a3015; --tape-ink: #f1d98e; --focus: #4ade80; --overlay: rgba(0, 0, 0, 0.6);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.35); --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
@@ -72,7 +73,8 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, h4 { margin: 0; text-wrap: balance; color: var(--ink); }
+h1, h2, h3, h4 { margin: 0; text-wrap: balance; color: var(--heading); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 h1, h2 { font-family: var(--font-display); letter-spacing: -0.01em; }
 h1 { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
 h2 { font-size: 1.15rem; font-weight: 650; line-height: 1.3; }

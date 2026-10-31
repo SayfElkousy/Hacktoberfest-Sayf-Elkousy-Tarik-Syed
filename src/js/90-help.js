@@ -81,12 +81,13 @@ function settingsView() {
         ${selectField({ label: '“May Be Behind” threshold', id: 'st-behind', bind: 'settings.behindMinutes', value: S.settings.behindMinutes, opts: [2, 3, 5, 8, 10, 15].map((n) => [n, `${n} minutes past the step’s planned finish`]), hint: 'A group is flagged when the session clock passes the planned finish of its current step by this much.' })}
         ${selectField({ label: 'Highlight help requests waiting longer than', id: 'st-wait', bind: 'settings.longWaitMinutes', value: S.settings.longWaitMinutes, opts: [2, 3, 5, 8, 10].map((n) => [n, `${n} minutes`]), hint: 'Highlighting never changes queue order.' })}
       </div></section>
+    ${StudentSite.card()}
     <section class="card card-pad stack" aria-labelledby="dm-h" style="border-style:dashed"><div class="row"><span class="demo-tag">${icon('zap', 'sm')}Demo</span><h2 id="dm-h">About this prototype</h2></div>
       <ul class="ul-plain small">
         <li><strong>Sign-in</strong> is simulated. Accounts and data are saved only in this browser.</li>
         <li><strong>Lab Designer</strong> uses live Claude responses when this page is allowed to; otherwise a labeled simulated assistant answers.</li>
         <li><strong>File import</strong> really reads PDF (text-based), DOCX and TXT files in your browser. Structuring the text is rule-based.</li>
-        <li><strong>Live student events</strong> come from the demo controls on Live Progress, not real student devices.</li>
+        <li><strong>Live student events</strong> come from real student devices when the student site is connected above. Otherwise they come from the demo controls on Live Progress.</li>
       </ul>
       <div><button class="btn btn-danger" data-action="demo-reset-ask">${icon('refresh')}Reset demo data</button></div></section>
   </div>`;

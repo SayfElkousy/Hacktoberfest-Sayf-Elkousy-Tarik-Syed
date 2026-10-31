@@ -1,5 +1,7 @@
 # Labby — teacher dashboard prototype (phase 1)
 
+The student side lives in [`student assistant/`](student%20assistant/README.md): students join with the class code and are guided through the lab by a local Gemma 4 model, with each lab group's progress flowing into Live Progress. Connect the two under Settings → Student site (see `src/js/85-student-site.js`).
+
 A working, clickable prototype of Labby's website: account creation with role selection, simple student/independent placeholder pages, and the full teacher flow:
 
 **Create class → share join code → plan or upload a lab → review and assign → monitor live progress → respond to help requests.**

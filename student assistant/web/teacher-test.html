@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Teacher Test Page</title>
+    <style>
+      :root { font-family: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif; color-scheme: light; }
+      body { max-width: 860px; margin: 0 auto; padding: 16px; line-height: 1.45; background: #f7faf8; color: #17251d; }
+      h1 { font-size: 24px; margin-bottom: 4px; color: #143d2b; }
+      h2 { font-size: 18px; margin-top: 28px; color: #143d2b; }
+      label { display: block; margin: 12px 0 4px; font-weight: 700; color: #143d2b; }
+      input, textarea { width: 100%; box-sizing: border-box; padding: 10px; font: inherit; background: #fff; border: 1px solid #dce7df; border-radius: 8px; }
+      button { margin-top: 10px; min-height: 44px; padding: 0 16px; font: inherit; font-weight: 700; cursor: pointer; background: #15803d; border: 1px solid #15803d; border-radius: 8px; color: #fff; }
+      button:hover { background: #166534; }
+      :focus-visible { outline: 3px solid #15803d; outline-offset: 2px; }
+      table { width: 100%; border-collapse: collapse; font-size: 15px; background: #fff; }
+      th, td { padding: 8px; border-bottom: 1px solid #dce7df; text-align: left; vertical-align: top; }
+      #code { font-family: Consolas, monospace; font-size: 28px; letter-spacing: 0.15em; color: #143d2b; }
+      .note { color: #52645a; font-size: 15px; }
+    </style>
+  </head>
+  <body>
+    <h1>Teacher test page</h1>
+    <p class="note">Stands in for the real dashboard while testing. It uses the same API the dashboard will.</p>
+
+    <label for="token">Dashboard token (printed when the server starts)</label>
+    <input id="token" autocomplete="off" />
+
+    <h2>1. Start a lab</h2>
+    <label for="labCode">Join code from the dashboard (leave blank to generate one)</label>
+    <input id="labCode" autocomplete="off" />
+    <label for="procedure">Procedure</label>
+    <textarea id="procedure" rows="8">How friction slows a rolling ball
+
+Equipment: a ball, a ruler.
+
+1. Lay the ruler flat on the table where the camera can see it.
+2. Measure the length of the ruler. It should be 30 cm.
+3. Roll the ball across the table and watch what happens to it.
+4. Explain why the ball slows down as it rolls.</textarea>
+    <button id="create">Create lab</button>
+    <p>Status: <span id="status">none yet</span></p>
+    <p>Join code: <span id="code">—</span></p>
+
+    <h2>2. Ask the class a question</h2>
+    <label for="question">Exact question (leave blank to have Gemma write one)</label>
+    <input id="question" />
+    <label for="topic">Topic for Gemma's question (optional)</label>
+    <input id="topic" />
+    <button id="send">Send to all students</button>
+    <p class="note" id="sent"></p>
+
+    <h2>3. Live progress</h2>
+    <table>
+      <thead>
+        <tr><th>Student</th><th>Where</th><th>Measurements</th><th>Last answer</th><th>Flags</th></tr>
+      </thead>
+      <tbody id="students"></tbody>
+    </table>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const students = new Map();
+      let labId = null;
+
+      const authHeaders = () => ({ Authorization: `Bearer ${$('token').value.trim()}`, 'Content-Type': 'application/json' });
+
+      async function call(path, body) {
+        const response = await fetch(`/api/dashboard${path}`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        return data;
+      }
+
+      const escape = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+      function render() {
+        $('students').innerHTML = [...students.values()]
+          .map((student) => {
+            const where = student.phase === 'steps' ? `Step ${student.currentStep + 1}/${student.steps.length}: ${student.steps[student.currentStep]?.status}` : student.phase;
+            const measurements = student.measurements.map((m) => `${m.label}: ${m.value} ${m.unit}`).join('<br>');
+            const answer = student.answers.at(-1);
+            const last = answer ? `${answer.correct ? 'Right' : 'Wrong'}: ${escape(answer.answer)}` : '';
+            const flags = [student.helpRequested && 'Wants help', student.alert].filter(Boolean).join('; ');
+            return `<tr><td>${escape(student.name)}${student.online ? '' : ' (offline)'}</td><td>${escape(where)}</td><td>${measurements}</td><td>${last}</td><td>${escape(flags)}</td></tr>`;
+          })
+          .join('');
+      }
+
+      function watch(id) {
+        const source = new EventSource(`/api/dashboard/labs/${id}/stream?token=${encodeURIComponent($('token').value.trim())}`);
+        source.onmessage = (message) => {
+          const event = JSON.parse(message.data);
+          if (event.type === 'lab') {
+            $('status').textContent = event.lab.error ? `failed: ${event.lab.error}` : event.lab.status;
+            $('code').textContent = event.lab.code;
+          }
+          if (event.type === 'student') {
+            students.set(event.student.id, event.student);
+            render();
+          }
+        };
+      }
+
+      $('create').onclick = async () => {
+        try {
+          const lab = await call('/labs', { procedure: $('procedure').value, code: $('labCode').value });
+          labId = lab.code;
+          $('status').textContent = lab.status;
+          $('code').textContent = lab.code;
+          students.clear();
+          render();
+          watch(lab.id);
+        } catch (error) {
+          $('status').textContent = error.message;
+        }
+      };
+
+      $('send').onclick = async () => {
+        if (!labId) return;
+        $('sent').textContent = 'Sending…';
+        try {
+          const { sent } = await call(`/labs/${labId}/prompts`, { question: $('question').value, topic: $('topic').value });
+          $('sent').textContent = sent.length ? `Sent: ${sent[0].question}` : 'No students have joined yet.';
+        } catch (error) {
+          $('sent').textContent = error.message;
+        }
+      };
+    </script>
+  </body>
+</html>

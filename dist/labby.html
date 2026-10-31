@@ -7,38 +7,39 @@
 <style>
 /* Layout concept: persistent left rail + working canvas; dense, scannable cards for in-class use, roomier forms for prep. */
 :root {
-  --bg: #f2f6f6;
+  --bg: #f7faf8;
   --surface: #ffffff;
-  --surface-2: #f7fafa;
-  --surface-3: #eaf1f1;
-  --ink: #0f2429;
-  --ink-2: #33494e;
-  --muted: #5a6f74;
-  --line: #d8e3e4;
-  --line-strong: #bfcfd1;
-  --accent: #0a7570;
-  --accent-ink: #075a56;
-  --accent-soft: #dcf0ee;
+  --surface-2: #f7faf8;
+  --surface-3: #eef5f0;
+  --ink: #17251d;
+  --ink-2: #2e4036;
+  --heading: #143d2b;
+  --muted: #52645a;
+  --line: #dce7df;
+  --line-strong: #c3d4c9;
+  --accent: #15803d;
+  --accent-ink: #166534;
+  --accent-soft: #ecfdf3;
   --accent-contrast: #ffffff;
   --blue: #1d5ba8;
   --blue-soft: #e2ecf9;
-  --ok: #1b733b;
-  --ok-soft: #dff2e5;
-  --warn: #8f5300;
-  --warn-soft: #fcefd6;
-  --bad: #b02417;
-  --bad-soft: #fbe4e1;
+  --ok: #15803d;
+  --ok-soft: #ecfdf3;
+  --warn: #92400e;
+  --warn-soft: #fef3c7;
+  --bad: #b42318;
+  --bad-soft: #fef0ee;
   --wait: #5f3dc4;
   --wait-soft: #ece7fb;
   --idle: #536266;
   --idle-soft: #e9eeef;
   --tape: #f6e7bd;
   --tape-ink: #5c4300;
-  --focus: #1d5ba8;
-  --overlay: rgba(10, 26, 30, 0.42);
-  --shadow: 0 1px 2px rgba(15, 36, 41, 0.07), 0 1px 1px rgba(15, 36, 41, 0.04);
-  --shadow-lg: 0 18px 40px rgba(15, 36, 41, 0.18), 0 2px 6px rgba(15, 36, 41, 0.08);
-  --font-display: "Bricolage Grotesque", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --focus: #15803d;
+  --overlay: rgba(20, 61, 43, 0.4);
+  --shadow: 0 1px 2px rgba(20, 61, 43, 0.06);
+  --shadow-lg: 0 18px 40px rgba(20, 61, 43, 0.16), 0 2px 6px rgba(20, 61, 43, 0.06);
+  --font-display: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --r-sm: 8px;
@@ -50,10 +51,10 @@
   :root:not([data-theme="light"]) {
     --bg: #0d1618; --surface: #142024; --surface-2: #18272b; --surface-3: #1e3034;
     --ink: #e4eeef; --ink-2: #c2d2d4; --muted: #94a9ac; --line: #26393d; --line-strong: #33494e;
-    --accent: #3fc1b6; --accent-ink: #84ded5; --accent-soft: #123a39; --accent-contrast: #04211f;
+    --accent: #4ade80; --accent-ink: #86efac; --accent-soft: #14351f; --accent-contrast: #052e16; --heading: #d7f5e2;
     --blue: #86b4f2; --blue-soft: #172f4d; --ok: #63cc88; --ok-soft: #12321f; --warn: #f0b75c; --warn-soft: #382811;
     --bad: #f38b7f; --bad-soft: #3c1a16; --wait: #bba6f6; --wait-soft: #282043; --idle: #a6b4b7; --idle-soft: #213034;
-    --tape: #3a3015; --tape-ink: #f1d98e; --focus: #86b4f2; --overlay: rgba(0, 0, 0, 0.6);
+    --tape: #3a3015; --tape-ink: #f1d98e; --focus: #4ade80; --overlay: rgba(0, 0, 0, 0.6);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.35); --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
@@ -61,10 +62,10 @@
 :root[data-theme="dark"] {
   --bg: #0d1618; --surface: #142024; --surface-2: #18272b; --surface-3: #1e3034;
   --ink: #e4eeef; --ink-2: #c2d2d4; --muted: #94a9ac; --line: #26393d; --line-strong: #33494e;
-  --accent: #3fc1b6; --accent-ink: #84ded5; --accent-soft: #123a39; --accent-contrast: #04211f;
+  --accent: #4ade80; --accent-ink: #86efac; --accent-soft: #14351f; --accent-contrast: #052e16; --heading: #d7f5e2;
   --blue: #86b4f2; --blue-soft: #172f4d; --ok: #63cc88; --ok-soft: #12321f; --warn: #f0b75c; --warn-soft: #382811;
   --bad: #f38b7f; --bad-soft: #3c1a16; --wait: #bba6f6; --wait-soft: #282043; --idle: #a6b4b7; --idle-soft: #213034;
-  --tape: #3a3015; --tape-ink: #f1d98e; --focus: #86b4f2; --overlay: rgba(0, 0, 0, 0.6);
+  --tape: #3a3015; --tape-ink: #f1d98e; --focus: #4ade80; --overlay: rgba(0, 0, 0, 0.6);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.35); --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
@@ -79,7 +80,8 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, h4 { margin: 0; text-wrap: balance; color: var(--ink); }
+h1, h2, h3, h4 { margin: 0; text-wrap: balance; color: var(--heading); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 h1, h2 { font-family: var(--font-display); letter-spacing: -0.01em; }
 h1 { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
 h2 { font-size: 1.15rem; font-weight: 650; line-height: 1.3; }
@@ -4346,6 +4348,237 @@ function cpFlag(p, sess, c, wide = false) {
 }
 
 /* =====================================================================
+   Bridge to the Student Assistant site (the "student assistant" folder).
+
+   Labby has no server of its own yet, so this runs in the teacher's browser.
+   While a session is active it publishes the lab under the class join code,
+   with the period's lab groups as teams, then reads each team's progress back
+   into LabSessionAPI so Live Progress and the Help Queue update for real.
+
+   Everything goes through the session API, so repeats are safe: each write
+   has a stable event ID.
+   ===================================================================== */
+const StudentSite = {
+  KEY: 'labby.studentSite',
+  POLL_MS: 3000,
+  state: 'off', // off | connected | interrupted
+  published: {}, // session id -> what was last sent
+  helpOpen: new Set(),
+
+  config() {
+    try { return { url: 'http://localhost:8080', token: '', ...JSON.parse(localStorage.getItem(this.KEY) || '{}') }; }
+    catch (e) { return { url: 'http://localhost:8080', token: '' }; }
+  },
+  saveConfig(next) {
+    try { localStorage.setItem(this.KEY, JSON.stringify(next)); } catch (e) { /* storage unavailable */ }
+    this.published = {};
+  },
+  asked() {
+    try { return JSON.parse(localStorage.getItem(`${this.KEY}.asked`) || '{}'); } catch (e) { return {}; }
+  },
+  saveAsked(asked) {
+    try { localStorage.setItem(`${this.KEY}.asked`, JSON.stringify(asked)); } catch (e) { /* storage unavailable */ }
+  },
+
+  async call(path, body) {
+    const { url, token } = this.config();
+    const res = await fetch(`${url.replace(/\/+$/, '')}/api/dashboard${path}`, {
+      method: body ? 'POST' : 'GET',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(`Student site returned ${res.status}`);
+    return res.json();
+  },
+
+  /** The newest active session for each class, since students join by the class code. */
+  sessions() {
+    const byClass = new Map();
+    S.sessions.filter((s) => s.status === 'active').forEach((s) => {
+      const held = byClass.get(s.classId);
+      if (!held || (s.startedAt || 0) > (held.startedAt || 0)) byClass.set(s.classId, s);
+    });
+    return [...byClass.values()];
+  },
+
+  labFor(sess) {
+    const c = sessionContent(sess);
+    const teams = progressFor(sess.id).map((p) => groupById(p.groupId)).filter(Boolean).map((g) => ({ id: g.id, name: g.name }));
+    const steps = c.steps.map((s) => `${s.title}: ${s.instructions}`);
+    const procedure = [
+      c.title,
+      c.objectives.length ? `Objectives: ${c.objectives.join('; ')}` : '',
+      c.materials.length ? `Equipment: ${c.materials.map((m) => m.name).join(', ')}` : '',
+      c.precautions.length ? `Safety: ${c.precautions.join('; ')}` : '',
+      ...steps.map((text, i) => `${i + 1}. ${text}`),
+    ].filter(Boolean).join('\n');
+    return { code: classById(sess.classId).joinCode, procedure, teams, steps };
+  },
+
+  async publish(sess) {
+    const lab = this.labFor(sess);
+    const signature = JSON.stringify(lab);
+    if (this.published[sess.id] === signature) return lab.code;
+    await this.call('/labs', lab);
+    this.published[sess.id] = signature;
+    return lab.code;
+  },
+
+  /** Plan steps match Labby's steps one to one, so s3 is the third step. */
+  stepAt(c, planStepId) {
+    return c.steps[Number(String(planStepId).slice(1)) - 1] || null;
+  },
+
+  applyTeam(sess, c, team, students) {
+    const t = LabSessionAPI.track(sess.id, team.id);
+    if (!t) return false;
+    const p = ensureProgressShape(t.p);
+    let changed = false;
+
+    p.connection = team.online > 0 ? 'online' : p.connection;
+
+    for (const student of students) {
+      const joined = `sa-join-${sess.id}-${student.id}`;
+      if (!seenEvent(joined)) { markEvent(joined); logActivity(p, `${student.name} joined from the student site`); changed = true; }
+
+      for (const m of student.measurements) {
+        const step = this.stepAt(c, m.stepId);
+        if (!step) continue;
+        const res = LabSessionAPI.recordMeasurement({ eventId: `sa-m-${student.id}-${m.at}`, sessionId: sess.id, groupId: team.id, stepId: step.id, participantId: student.id, label: m.label, unit: m.unit, value: m.value });
+        changed = changed || (res && res.status === 'ok');
+      }
+
+      for (const a of student.answers) {
+        const key = `sa-a-${student.id}-${a.promptId}`;
+        if (seenEvent(key)) continue;
+        markEvent(key);
+        logActivity(p, `${student.name} answered “${a.question}”: ${a.answer} (${a.correct ? 'correct' : 'needs review'})`, a.at);
+        changed = true;
+      }
+
+      if (student.helpRequested && !this.helpOpen.has(student.id)) {
+        this.helpOpen.add(student.id);
+        const step = c.steps[Math.min(student.currentStep, c.steps.length - 1)];
+        LabSessionAPI.requestHelp({ eventId: `sa-h-${student.id}-${Date.now()}`, sessionId: sess.id, groupId: team.id, participantId: student.id, category: 'Other', message: `${student.name} asked for you on step ${student.currentStep + 1}: ${step.title}` });
+        changed = true;
+      }
+      if (!student.helpRequested) this.helpOpen.delete(student.id);
+
+      if (student.alert) {
+        const before = p.aiFlags.length;
+        LabSessionAPI.flag({ sessionId: sess.id, groupId: team.id, kind: 'safety', text: student.alert, stepId: c.steps[p.stepIndex].id });
+        changed = changed || p.aiFlags.length !== before;
+      }
+    }
+
+    // A team moves as its furthest member does, one confirmed step at a time.
+    for (let i = 0; i < team.stepsDone && i < c.steps.length; i++) {
+      const stepId = c.steps[i].id;
+      const res = LabSessionAPI.completeStep({ eventId: `sa-step-${sess.id}-${team.id}-${stepId}`, sessionId: sess.id, groupId: team.id, stepId, participantId: null });
+      if (res.status === 'ok') changed = true;
+      if (res.status === 'blocked') break;
+    }
+
+    return changed;
+  },
+
+  /** Teacher-written checkpoints reach students as questions; their answers go back through the session API. */
+  async runCheckpoint(sess, c, team, code, students) {
+    const t = LabSessionAPI.track(sess.id, team.id);
+    const cp = t && t.p.atCheckpoint ? checkpointById(c, t.p.atCheckpoint) : null;
+    if (!cp || cp.kind !== 'response' || !cp.questions.length) return false;
+
+    const asked = this.asked();
+    const responses = {};
+    for (const q of cp.questions) {
+      const key = `${team.id}:${cp.id}:${q.id}`;
+      if (!asked[key]) {
+        const choices = q.type === 'mc' ? ` Choices: ${q.options.map((o) => o.text).join(', ')}.` : '';
+        const { sent } = await this.call(`/labs/${encodeURIComponent(code)}/prompts`, { question: `${q.prompt}${choices}`, teamIds: [team.id] });
+        if (sent.length) { asked[key] = sent.map((s) => s.promptId); this.saveAsked(asked); }
+        continue;
+      }
+      const reply = students.flatMap((s) => s.answers).find((a) => asked[key].includes(a.promptId));
+      if (!reply) continue;
+      if (q.type === 'mc') {
+        const said = reply.answer.toLowerCase();
+        const choice = q.options.find((o) => said.includes(o.text.toLowerCase()));
+        if (choice) responses[q.id] = choice.id;
+      } else if (q.type === 'numeric') {
+        const number = reply.answer.match(/-?\d+(\.\d+)?/);
+        if (number) responses[q.id] = number[0];
+      } else responses[q.id] = reply.answer;
+    }
+
+    if (Object.keys(responses).length < cp.questions.length) return false;
+    const res = LabSessionAPI.saveResponse({ eventId: `sa-cp-${sess.id}-${team.id}-${cp.id}`, sessionId: sess.id, groupId: team.id, checkpointId: cp.id, participantId: t.members[0] || null, responses, submit: true });
+    return !!res && res.status === 'ok';
+  },
+
+  async tick() {
+    if (typeof S === 'undefined' || !S || !this.config().token) { this.state = 'off'; return; }
+    try {
+      let changed = false;
+      for (const sess of this.sessions()) {
+        const c = sessionContent(sess);
+        if (!c || !c.steps.length) continue;
+        const code = await this.publish(sess);
+        const { lab, students, teams } = await this.call(`/labs/${encodeURIComponent(code)}`);
+        if (!lab.plan) continue;
+        for (const team of teams) {
+          if (!groupById(team.id)) continue;
+          const members = students.filter((s) => s.teamId === team.id);
+          if (this.applyTeam(sess, c, team, members)) changed = true;
+          if (await this.runCheckpoint(sess, c, team, code, members)) changed = true;
+        }
+      }
+      this.state = 'connected';
+      if (changed) commit();
+    } catch (e) {
+      this.state = 'interrupted';
+      console.warn(e);
+    }
+  },
+
+  start() {
+    if (this.timer) return;
+    this.timer = setInterval(() => { this.tick(); }, this.POLL_MS);
+  },
+
+  card() {
+    const { url, token } = this.config();
+    const label = { off: 'Not connected', connected: 'Connected', interrupted: 'Connection interrupted' }[this.state];
+    const live = this.sessions();
+    return html`<section class="card card-pad stack" aria-labelledby="ss-h">
+      <div class="row between"><h2 id="ss-h">Student site</h2><span class="hint">${label}</span></div>
+      <p class="small muted">Students join with the class code. Each lab group’s progress then appears in Live Progress and the Help Queue while a session is active.</p>
+      <div class="form-grid">
+        <div class="field"><label class="label" for="ss-url">Address</label><input class="input" id="ss-url" value="${url}"></div>
+        <div class="field"><label class="label" for="ss-token">Dashboard token</label><input class="input" id="ss-token" type="password" autocomplete="off" value="${token}"><span class="hint">Printed when the student site’s server starts.</span></div>
+      </div>
+      <div><button class="btn btn-primary" data-action="site-save">Save connection</button></div>
+      ${live.length ? html`<div class="field"><label class="label" for="ss-question">Ask active classes a question</label><input class="input" id="ss-question" placeholder="Leave blank to have Gemma write one"></div>
+      <div><button class="btn" data-action="site-ask">Send question</button></div>` : ''}
+    </section>`;
+  },
+
+  actions: {
+    'site-save': () => {
+      StudentSite.saveConfig({ url: document.getElementById('ss-url').value.trim(), token: document.getElementById('ss-token').value.trim() });
+      StudentSite.tick().then(() => { toast(StudentSite.state === 'connected' ? 'Connected to the student site.' : 'Couldn’t reach the student site. Check the address and token.', StudentSite.state === 'connected' ? 'check' : 'alert'); commit(); });
+    },
+    'site-ask': async () => {
+      const question = document.getElementById('ss-question').value.trim();
+      try {
+        for (const sess of StudentSite.sessions()) await StudentSite.call(`/labs/${encodeURIComponent(classById(sess.classId).joinCode)}/prompts`, { question });
+        toast('Question sent to students.', 'check');
+      } catch (e) { toast('Couldn’t reach the student site.', 'alert'); }
+    },
+  },
+};
+StudentSite.start();
+
+/* =====================================================================
    Help Queue (first in, first out) and Settings.
    Order is fixed by each request's original submission time. Labby never
    reorders it, and starting or reopening a request keeps its place.
@@ -4428,12 +4661,13 @@ function settingsView() {
         ${selectField({ label: '“May Be Behind” threshold', id: 'st-behind', bind: 'settings.behindMinutes', value: S.settings.behindMinutes, opts: [2, 3, 5, 8, 10, 15].map((n) => [n, `${n} minutes past the step’s planned finish`]), hint: 'A group is flagged when the session clock passes the planned finish of its current step by this much.' })}
         ${selectField({ label: 'Highlight help requests waiting longer than', id: 'st-wait', bind: 'settings.longWaitMinutes', value: S.settings.longWaitMinutes, opts: [2, 3, 5, 8, 10].map((n) => [n, `${n} minutes`]), hint: 'Highlighting never changes queue order.' })}
       </div></section>
+    ${StudentSite.card()}
     <section class="card card-pad stack" aria-labelledby="dm-h" style="border-style:dashed"><div class="row"><span class="demo-tag">${icon('zap', 'sm')}Demo</span><h2 id="dm-h">About this prototype</h2></div>
       <ul class="ul-plain small">
         <li><strong>Sign-in</strong> is simulated. Accounts and data are saved only in this browser.</li>
         <li><strong>Lab Designer</strong> uses live Claude responses when this page is allowed to; otherwise a labeled simulated assistant answers.</li>
         <li><strong>File import</strong> really reads PDF (text-based), DOCX and TXT files in your browser. Structuring the text is rule-based.</li>
-        <li><strong>Live student events</strong> come from the demo controls on Live Progress, not real student devices.</li>
+        <li><strong>Live student events</strong> come from real student devices when the student site is connected above. Otherwise they come from the demo controls on Live Progress.</li>
       </ul>
       <div><button class="btn btn-danger" data-action="demo-reset-ask">${icon('refresh')}Reset demo data</button></div></section>
   </div>`;
@@ -4548,6 +4782,7 @@ function sessFromEl(el) { return sessionById(el.dataset.sid); }
 function progFromEl(el) { return S.progress.find((p) => p.id === el.dataset.pid); }
 
 const ACTIONS = {
+  ...StudentSite.actions,
   /* auth + demo */
   'demo-login': (el) => { const u = byId(S.users, el.dataset.uid); S.currentUserId = u.id; commit(); go(homeFor(u.role)); },
   'signout': () => { S.currentUserId = null; U.menu = false; commit(); go('signin'); toast('Signed out.'); },

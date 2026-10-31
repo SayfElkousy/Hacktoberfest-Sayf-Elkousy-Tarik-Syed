@@ -76,7 +76,7 @@ function topbar(title, ctx = '', ws = 'teacher') {
 }
 
 function teacherShell(route, title, body, ctx = '') {
-  return html`${demoBand()}<div class="app">
+  return html`${demoBand()}<div class="app ws-teacher">
     ${sidebar(route)}
     <div class="main">${topbar(title, ctx)}<main class="content" id="main" tabindex="-1" data-key="main-${route.name}">${body}</main></div>
   </div>`;
@@ -149,7 +149,7 @@ function wsSidebar(ws, route) {
   </nav>${U.navOpen ? html`<div class="scrim" data-action="nav-close" data-key="nav-scrim"></div>` : ''}`;
 }
 function wsShell(ws, route, title, body, ctx = '') {
-  return html`${demoBand()}<div class="app">
+  return html`${demoBand()}<div class="app ws-${ws}">
     ${wsSidebar(ws, route)}
     <div class="main">${topbar(title, ctx, ws)}<main class="content" id="main" tabindex="-1" data-key="main-${route.name}">${body}</main></div>
   </div>`;

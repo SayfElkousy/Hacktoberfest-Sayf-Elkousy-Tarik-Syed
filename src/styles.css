@@ -675,3 +675,36 @@ img.avatar { object-fit: cover; padding: 0; }
 .join-links { background: var(--surface); border-radius: 10px; padding: 8px 10px; border: 1px solid var(--line); margin-top: 6px; }
 
 .guide .msg-meta { display: flex; gap: 6px 8px; align-items: center; flex-wrap: wrap; font-size: 0.76rem; color: var(--muted); }
+
+/* ---------- Workspace identities: teacher = teal on white, student = indigo with a colored sidebar ---------- */
+.ws-student {
+  --accent: #4f46e5; --accent-ink: #3730a3; --accent-soft: #e8e7fd; --accent-contrast: #ffffff;
+  --bg: #f5f5fc; --surface-2: #f8f8fe; --surface-3: #ececf8; --line: #dedff0; --line-strong: #c6c8e2; --focus: #4f46e5;
+  --side-bg: #2e2a85; --side-ink: #e9e8ff; --side-muted: #b9b6f2; --side-hover: rgba(255, 255, 255, 0.1); --side-active: #ffffff; --side-active-ink: #2e2a85;
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ws-student { --accent: #8b85ff; --accent-ink: #b9b5ff; --accent-soft: #24224f; --accent-contrast: #12103a; --bg: #11111f; --surface-2: #1a1a2e; --surface-3: #222238; --line: #2c2c45; --line-strong: #3a3a58; --focus: #8b85ff; --side-bg: #1c1a4a; --side-ink: #e9e8ff; --side-muted: #a9a6e6; --side-active: #8b85ff; --side-active-ink: #12103a; }
+}
+:root[data-theme="dark"] .ws-student { --accent: #8b85ff; --accent-ink: #b9b5ff; --accent-soft: #24224f; --accent-contrast: #12103a; --bg: #11111f; --surface-2: #1a1a2e; --surface-3: #222238; --line: #2c2c45; --line-strong: #3a3a58; --focus: #8b85ff; --side-bg: #1c1a4a; --side-ink: #e9e8ff; --side-muted: #a9a6e6; --side-active: #8b85ff; --side-active-ink: #12103a; }
+.ws-student .sidebar { background: var(--side-bg); border-right-color: transparent; color: var(--side-ink); }
+.ws-student .sidebar .brand, .ws-student .sidebar .brand-name { color: #fff; }
+.ws-student .sidebar .brand-mark { background: #fff; color: var(--side-bg); }
+.ws-student .sidebar .eyebrow, .ws-student .sidebar .xs.muted { color: var(--side-muted); }
+.ws-student .sidebar .small.strong { color: #fff; }
+.ws-student .nav a { color: var(--side-ink); border-radius: 12px; }
+.ws-student .nav a:hover { background: var(--side-hover); color: #fff; }
+.ws-student .nav a[aria-current="page"] { background: var(--side-active); color: var(--side-active-ink); }
+.ws-student .nav .badge { background: #fbbf24; color: #3b2a00; }
+.ws-student .sidebar-foot { border-top-color: rgba(255, 255, 255, 0.15); }
+.ws-student .sidebar .select { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.25); }
+.ws-student .sidebar .select option { color: #111; }
+.ws-student .topbar { background: color-mix(in srgb, var(--accent-soft) 70%, var(--bg)); border-bottom-color: color-mix(in srgb, var(--accent) 25%, var(--line)); }
+.ws-student .card, .ws-student .quick-btn { border-radius: 18px; }
+.ws-student .btn { border-radius: 999px; }
+.ws-student .btn-icon { border-radius: 10px; }
+.ws-student .avatar { background: var(--accent-soft); color: var(--accent-ink); }
+.ws-student .live-hero { border-color: var(--accent); }
+.ws-student .page-intro h2, .ws-student .topbar h1 { color: var(--accent-ink); }
+.ws-teacher .topbar h1::before { content: "Teacher"; display: inline-block; margin-right: 10px; padding: 2px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); font: 700 0.7rem/1.6 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; vertical-align: 4px; }
+.ws-student .topbar h1::before { content: "Student"; display: inline-block; margin-right: 10px; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--accent-contrast); font: 700 0.7rem/1.6 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; vertical-align: 4px; }
